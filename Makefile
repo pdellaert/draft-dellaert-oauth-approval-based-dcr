@@ -1,3 +1,5 @@
+export UPLOAD_EMAIL ?= pdellaer@amazon.com
+
 LIBDIR := lib
 -include $(LIBDIR)/main.mk
 

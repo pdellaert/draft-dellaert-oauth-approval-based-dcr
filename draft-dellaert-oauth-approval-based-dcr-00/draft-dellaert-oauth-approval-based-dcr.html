@@ -1,0 +1,2304 @@
+<!DOCTYPE html>
+<html lang="en" class="Internet-Draft">
+<head>
+<meta charset="utf-8">
+<meta content="Common,Latin" name="scripts">
+<meta content="initial-scale=1.0" name="viewport">
+<title>OAuth 2.0 Approval-Based Dynamic Client Registration</title>
+<meta content="Philippe Dellaert" name="author">
+<meta content="
+       This document specifies an extension to the OAuth 2.0 Dynamic Client Registration Protocol ( ) that enables registration of a client with an authorization server through an explicit approval step performed by an approving party, typically the user running the client, without requiring the client to possess an Initial Access Token (IAT) beforehand. The client submits its desired metadata to the existing client registration endpoint and signals that it can accept a deferred, approval-based registration. When the authorization server requires approval, it defers completion of the registration and returns a 202 (Accepted) response carrying a registration code and a verification challenge. The client polls the same registration endpoint, presenting the registration code. The approving party, authenticated to the authorization server through a mechanism of the authorization server's choosing, responds to the verification challenge and approves or denies the registration. On approval, a subsequent poll returns a registered client identifier and, where applicable, a client secret. 
+       This extension preserves the authorization server operator's ability to require an authenticated, policy-controlled approval for every new client record, while removing the operational burden of issuing an Initial Access Token out of band. 
+    " name="description">
+<meta content="xml2rfc 3.34.0" name="generator">
+<meta content="OAuth" name="keyword">
+<meta content="Dynamic Client Registration" name="keyword">
+<meta content="Approval" name="keyword">
+<meta content="DCR" name="keyword">
+<meta content="draft-dellaert-oauth-approval-based-dcr-latest" name="ietf.draft">
+<!-- Generator version information:
+  xml2rfc 3.34.0
+    Python 3.14.5
+    ConfigArgParse 1.7.5
+    google-i18n-address 3.1.1
+    intervaltree 3.2.1
+    Jinja2 3.1.6
+    lxml 6.1.1
+    natsort 8.4.0
+    platformdirs 4.10.1
+    pycountry 24.6.1
+    PyYAML 6.0.3
+    requests 2.33.1
+    wcwidth 0.8.2
+-->
+<link href="draft-dellaert-oauth-approval-based-dcr.xml" rel="alternate" type="application/rfc+xml">
+<link href="#copyright" rel="license">
+<style type="text/css">@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Italic'), local('Lora-Italic'), url('https://martinthomson.github.io/rfc-css/fonts/lora-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Lora Regular'), local('Lora-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/lora-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-cyrillic.woff2') format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-vietnamese.woff2') format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local('Lora Bold'), local('Lora-Bold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-bold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Lora SemiBold'), local('Lora-SemiBold'), url('https://martinthomson.github.io/rfc-css/fonts/lora-semibold-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Oxygen Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Oxygen Mono'), local('OxygenMono-Regular'), url('https://martinthomson.github.io/rfc-css/fonts/oxygenmono-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+}
+
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-greek.woff2') format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: italic;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-cyrillic-ext.woff2') format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-greek.woff2') format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Sofia Sans Semi Condensed';
+  font-style: normal;
+  font-weight: 1 1000;
+  src: url('https://martinthomson.github.io/rfc-css/fonts/sofiasanssemicondensed-regular-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light dark;
+  --background-color: #fff;
+  --text-color: #222;
+  --title-color: #191919;
+  --link-color: #2a6496;
+  --highlight-color: #f9f9f9;
+  --line-color: #eee;
+  --pilcrow-weak: #ddd;
+  --pilcrow-strong: #bbb;
+  --small-font-size: 14.5px;
+  --font-mono: 'Oxygen Mono', monospace;
+  --font-title: "Sofia Sans Semi Condensed", sans-serif;
+  scrollbar-color: #bbb #eee;
+}
+body {
+  max-width: 600px;
+  margin: 75px auto;
+  padding: 0 5px;
+  color: var(--text-color);
+  background-color: var(--background-color);
+  font: 16px/22px "Lora", serif;
+  scroll-behavior: smooth;
+}
+
+.ears {
+  display: none;
+}
+
+/* headings */
+section {
+  clear: both;
+}
+.section-number {
+  padding-right: 0.5em;
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-title);
+  font-weight: 680;
+  margin: 0.8em 0 0.3em;
+  font-size-adjust: 0.5;
+  color: var(--title-color);
+}
+h1 {
+  &#title {
+    font-size: 32px;
+    line-height: 40px;
+    clear: both;
+    margin: 1.5em 0 0.2em;
+  }
+  &#rfcnum {
+    margin: 1.5em 0 0.2em;
+    & + h1#title {
+      margin: 0.2em 0;
+    }
+  }
+}
+
+h1, h2, h3 {
+  font-size: 22px;
+  line-height: 27px;
+}
+h4, h5, h6 {
+  font-size: 20px;
+  line-height: 24px;
+}
+
+/* general structure */
+.author {
+  padding-bottom: 0.3em;
+  vertical-align: top;
+}
+#abstract+p {
+  font-size: 18px;
+  line-height: 24px;
+  & code, & samp, & tt {
+    font-size: 16px;
+    line-height: 0;
+  }
+}
+
+p {
+  padding: 0;
+  margin: 0.5em 0;
+  text-align: left;
+}
+div {
+  margin: 0;
+}
+.alignRight {
+  margin: 1em 0;
+  &.art-text {
+    background-color: var(--highlight-color);
+    border: 1px solid var(--line-color);
+    border-radius: 3px;
+    padding: 0.5em 1em 0;
+    margin-bottom: 0.5em;
+    & pre {
+      padding: 0;
+      width: auto;
+    }
+  }
+  & > *:first-child {
+    border: none;
+    margin: 0;
+    float: right;
+    clear: both;
+  }
+  & > *:nth-child(2) {
+    clear: both;
+    display: block;
+    border: none;
+  }
+}
+svg {
+  display: block;
+  /* font-family isn't space-separated, but =~ will have to do */
+  &[font-family~="monospace" i], & [font-family~="monospace" i] {
+    font-family: var(--font-mono);
+  }
+}
+.alignCenter {
+  margin: 1em 0;
+  &.art-text {
+    background-color: var(--highlight-color);
+    border: 1px solid var(--line-color);
+    border-radius: 3px;
+    padding: 0.5em 1em 0;
+    margin-bottom: 0.5em;
+    & pre {
+      padding: 0;
+      width: auto;
+    }
+  }
+  & > *:first-child {
+    border: none;
+    /* this isn't optimal, but it's an existence proof.  PrinceXML doesn't
+       support flexbox yet.
+    */
+    display: table;
+    margin: 0 auto;
+  }
+}
+
+/* lists */
+ol, ul {
+  padding: 0;
+  margin: 0 0 0.5em 2em;
+  & :is(ol, ul) {
+    margin-left: 1em;
+  }
+}
+li {
+  margin: 0 0 0.25em 0;
+}
+ul.empty, .ulEmpty {
+  list-style-type: none;
+  & li {
+    margin-top: 0.5em;
+  }
+}
+:is(ul, ol).compact, .ulCompact, .olCompact {
+  margin: 0 0 0 2em;
+  & li {
+    margin: 0;
+    & :first-child { margin-top: 0; }
+    & :last-child { margin-bottom: 0; }
+  }
+}
+
+/* definition lists */
+dl {
+  clear: left;
+  --indent: 3ch;
+  /* --indent: attr(indent ch); not supported in any browser, but we can dream */
+  &.olPercent {
+    --indent: 5ch;
+    & > dt {
+      min-width: calc(var(--indent) - 2ch);
+      float: none;
+    }
+  }
+
+  dl > dd > & {
+    margin-top: 0.5em;
+    margin-bottom: 0;
+  }
+
+  &:not(.dlNewline) > dt {
+    float: left;
+    margin-right: 2ch;
+    min-width: 8ch;
+  }
+  & > dd {
+    margin-bottom: .8em;
+    margin-left: var(--indent) !important; /* stupid element overrides */
+    min-height: 2ex;
+  }
+}
+:is(dl.compact, .dlCompact) > dd {
+  margin-bottom: 0;
+  & > :is(:first-child, .break:first-child + *) {
+    margin-top: 0;
+  }
+  & > :is(:last-child) {
+    margin-bottom: 0;
+  }
+}
+:is(dd, span).break {
+  display: none;
+}
+
+/* links */
+a {
+  text-decoration: none;
+  &[href] {
+    color: var(--link-color);
+    &:hover { text-decoration: underline; }
+    &.selfRef {
+      color: var(--text-color);
+      &:hover {
+        text-decoration: none;
+        background-color: var(--highlight-color);
+      }
+    }
+  }
+}
+.iref + a[href].internal {
+  color: var(--text-color);
+}
+a.xref:is(.cite, .auto), :is(#status-of-memo, #copyright) a {
+  white-space: nowrap;
+}
+
+/* Figures */
+tt, code, pre {
+  background-color: var(--highlight-color);
+  font: 14px/22px var(--font-mono);
+}
+tt, code {
+  /* changing the font for inline elements leads to different ascender
+     and descender heights; as we want to retain baseline alignment,
+     remove leading to avoid altering the final height of lines
+     note: this fails if these blocks take an entire line,
+     a different solution would be great */
+  line-height: 0;
+}
+:is(h1, h2, h3, h4, h5, h6) :is(tt, code) {
+  font-size: 84%;
+}
+pre {
+  border: 1px solid var(--line-color);
+  font-size: 13.5px;
+  line-height: 16px;
+  letter-spacing: -0.2px;
+  margin: 5px;
+  padding: 5px;
+}
+img {
+  max-width: 100%;
+}
+figure {
+  margin: 0.5em 0;
+  padding: 0;
+  & blockquote {
+    margin: 0.8em 0.4em 0.4em;
+  }
+}
+figcaption, caption {
+  font-style: italic;
+  margin: 0.5em 1.5em;
+  text-align: left;
+  caption-side: bottom;
+}
+@media screen {
+  /* Auto-collapse boilerplate. */
+  :is(#status-of-memo, #copyright) {
+    & p {
+      margin: -2px 0;
+      max-height: 0;
+      transition: max-height 2s ease, margin 0.5s ease 0.5s;
+      overflow: hidden;
+    }
+    &:hover p,
+    & h2:target ~ p {
+      margin: 0.5em 0;
+      max-height: 500px;
+      overflow: auto;
+    }
+  }
+  pre, svg {
+    display: inline-block;
+    /* In the horizontal direction, sometimes people make over-sized figures.
+       Scrollbars for those is therefore necessary: auto adds them as necessary..
+       In the vertical direction, the line-height can combine with the font
+       asender/descender height to produce scrollbars: hidden avoids that. */
+    overflow: auto hidden;
+  }
+  pre {
+    max-width: 100%;
+    width: calc(100% - 22px - 1em);
+  }
+  svg {
+    max-width: calc(100% - 22px - 1em);
+  }
+  figure pre {
+    display: block;
+    width: calc(100% - 25px);
+  }
+  :is(pre, svg) + .pilcrow {
+    display: inline-block;
+    vertical-align: text-bottom;
+    padding-bottom: 8px;
+  }
+}
+
+/* aside, blockquote */
+aside, blockquote {
+  margin-left: 0;
+  padding: 0 2em;
+  font-style: italic;
+}
+blockquote {
+  margin: 1em 0;
+  border-left: 2px var(--pilcrow-strong) solid;
+}
+cite {
+  display: block;
+  text-align: right;
+  font-style: italic;
+}
+
+/* tables */
+table {
+  width: auto;
+  max-width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  &.right { margin-left: auto; }
+  &.center { margin-left: auto; margin-right: auto; }
+  &.left { margin-right: auto; }
+  & .text-left { text-align: left; }
+  & .text-center { text-align: center; }
+  & .text-right { text-align: right; }
+  & caption {
+    margin: 0;
+    padding: 3px 0 3px 1em;
+  }
+  & p { margin: 0; }
+}
+
+thead, tbody {
+  border: 1px solid var(--line-color);
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 5px 10px;
+}
+th {
+  background-color: var(--line-color);
+}
+:is(tr:nth-child(2n), thead+tbody > tr:nth-child(2n+1)) > td {
+  background-color: var(--background-color);
+}
+:is(tr:nth-child(2n+1), thead+tbody > tr:nth-child(2n)) > td {
+  background-color: var(--highlight-color);
+}
+
+/* pilcrow */
+a.pilcrow {
+  margin-left: 3px;
+  opacity: 0.2;
+  user-select: none;
+  &[href] {
+    color: var(--pilcrow-weak);
+    &:hover { text-decoration: none; }
+  }
+  @media not print {
+    :hover > &, &:focus {
+      opacity: 1;
+    }
+    &[href]:hover {
+      color: var(--pilcrow-strong);
+      background-color: transparent;
+    }
+  }
+  @media print {
+    display: none;
+  }
+}
+
+/* misc */
+hr {
+  border: 0;
+  border-top: 1px solid var(--line-color);
+}
+.bcp14 {
+  font-variant: small-caps;
+  font-weight: 600;
+  font-size: var(--small-font-size);
+}
+.role {
+  font-variant: all-small-caps;
+}
+sub, sup {
+  line-height: 1;
+  font-size: 80%;
+}
+
+/* info block */
+#identifiers {
+  margin: 0;
+  font-size: var(--small-font-size);
+  line-height: 18px;
+  --identifier-width: 15ch;
+  & dt {
+    width: var(--identifier-width);
+    min-width: var(--identifier-width);
+    clear: left;
+    float: left;
+    text-align: right;
+    margin-right: 1ch;
+  }
+  & dd {
+    margin: 0;
+    margin-left: calc(1em + var(--identifier-width)) !important;
+    min-width: 5em;
+  }
+  & .authors {
+    & .author {
+      display: inline-block;
+      margin-right: 1.5em;
+    }
+    & .org {
+      font-style: italic;
+    }
+  }
+}
+
+/* The prepared/rendered info at the very bottom of the page */
+.docInfo {
+  color: #999;
+  font-size: 0.9em;
+  font-style: italic;
+  margin-top: 2em;
+  & .prepared {
+    float: right;
+  }
+}
+
+/* table of contents */
+#toc {
+  padding: 0.75em 0 2em 0;
+  margin-bottom: 1em;
+
+  & nav {
+    & ul {
+      margin: 0 0.5em 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    & li {
+      line-height: 1.3em;
+      margin: 2px 0;
+      padding-left: 1.2em;
+      text-indent: -1.2em;
+    }
+  }
+  & a.xref {
+    white-space: normal;
+  }
+}
+
+.references {
+  & > dt {
+    text-align: right;
+    font-weight: bold;
+    min-width: 10ch;
+    margin-right: 1.5ch;
+    &:target::before {
+      content: "⇒";
+      margin: 0 10px 0 -25px;
+    }
+  }
+  & > dd {
+    margin-left: 12ch !important;
+    overflow: visible;
+    & .refInstance {
+      margin-bottom: 0.8em;
+    }
+    & .ascii {
+      margin-bottom: 0.25em;
+    }
+  }
+}
+
+#rfc\.index\.index + ul {
+  margin-left: 0;
+}
+
+/* authors */
+address.vcard {
+  font-style: normal;
+  max-width: 20em;
+  margin: 1em auto 1em 0;
+
+  & .nameRole {
+    font-weight: 700;
+    margin-left: 0;
+  }
+  & .label {
+    margin: 0.5em 0;
+  }
+  & .type {
+    display: none;
+  }
+  & .alternative-contact {
+    margin: 0.5em 0 0.25em 0;
+  }
+  & .non-ascii {
+    margin: 0 0 0 2em;
+  }
+  & div.left {
+    text-align: left;
+  }
+  & div.right {
+    text-align: right;
+  }
+}
+
+hr.addr {
+  border-top: 1px dashed;
+  margin: 0;
+  color: #ddd;
+  max-width: calc(100% - 16px);
+}
+@media (min-width: 500px) {
+  #authors-addresses {
+    & > section {
+      column-count: 2;
+      column-gap: 20px;
+    }
+    & > section > h2 {
+      column-span: all;
+    }
+    /* hack for break-inside: avoid-column */
+    & address {
+      display: inline-block;
+      break-inside: avoid-column;
+    }
+  }
+}
+
+/* Comments */
+.rfcEditorRemove {
+  & p:first-of-type {
+    font-style: italic;
+  }
+}
+.cref {
+  background-color: rgba(249, 232, 105, 0.3);
+  padding: 2px 4px;
+}
+.crefSource {
+  font-style: italic;
+}
+
+@media screen {
+  #toc {
+    & nav {
+      font-family: var(--font-title);
+      font-weight: 360;
+      & > ul { margin-bottom: 2em; }
+      & ul {
+        margin: 0 0 0 4px;
+        & :is(p, li) {
+          margin: 2px 0;
+        }
+      }
+    }
+    & a.toplink {
+      float: right;
+    }
+  }
+}
+@media not screen {
+  #toc a.toplink {
+    display: none;
+  }
+}
+
+
+/* TOC layout for smaller screens */
+@media screen and (max-width: 929px) {
+  #toc {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    right: 0;
+    padding: 1px 0 0 0;
+    margin: 0;
+    border-bottom: 1px solid #ccc;
+    opacity: 0.6;
+    & h2 {
+      margin: 0;
+      padding: 2px 0 2px 6px;
+      padding-right: 1em;
+      font-size: 18px;
+      line-height: 24px;
+      min-width: 190px;
+      text-align: right;
+      background-color: #444;
+      color: white;
+      cursor: pointer;
+      &::before { /* css hamburger */
+        float: right;
+        position: relative;
+        width: 1em;
+        height: 1px;
+        left: -164px;
+        margin: 8px 0 0 0;
+        background: white none repeat scroll 0 0;
+        box-shadow: 0 4px 0 0 white, 0 8px 0 0 white;
+        content: "";
+      }
+    }
+    & nav {
+      display: none;
+      background-color: var(--background-color);
+      padding: 0.5em 1em 1em;
+      overflow: auto;
+      overscroll-behavior: contain;
+      height: calc(100vh - 48px);
+      border-left: 1px solid #ddd;
+    }
+    &.active {
+      opacity: 1;
+      & nav { display: block; }
+    }
+    /* Make the collapsed ToC header render white on gray also when it's a link */
+    & h2 a,
+    & h2 a:is(:link, :focus, :hover),
+    & a.toplink,
+    & a.toplink:hover {
+      color: white;
+      background-color: #444;
+      text-decoration: none;
+    }
+    & a.toplink {
+      margin: 2px 0.5em 0;
+    }
+  }
+}
+
+/* TOC layout for wide screens */
+@media screen and (min-width: 930px) {
+  body {
+    padding-right: 360px;
+    padding-right: calc(min(180px + 20%, 500px));
+  }
+  #toc {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    right: calc(50vw - 480px);
+    width: 312px;
+    margin: 0;
+    padding: 0;
+    z-index: 1;
+    & h2 {
+      margin: 0;
+      padding: 0.25em 1em 1em 0;
+    }
+    & nav {
+      display: block;
+      height: calc(90vh - 84px);
+      bottom: 0;
+      padding: 0.5em 0 2em;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+    & a.toplink {
+      margin: 8px 0.5em 0;
+    }
+  }
+  img { /* future proofing */
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* pagination */
+@media print {
+  body {
+    width: 100%;
+  }
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+  #n-copyright-notice {
+    border-bottom: none;
+  }
+  #toc {
+    page-break-before: always;
+    border-top: none;
+    padding-top: 0;
+  }
+  #n-introduction {
+    page-break-before: always;
+  }
+  figure, pre, .vcard {
+    page-break-inside: avoid;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+  :is(h2, h3, h4, h5, h6)+*, dd {
+    page-break-before: avoid;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 10pt;
+  }
+  table {
+    border: 1px solid #ddd;
+  }
+  td {
+    border-top: 1px solid #ddd;
+  }
+}
+
+@page :first {
+  padding-top: 0;
+  @top-left {
+    content: normal;
+    border: none;
+  }
+  @top-center {
+    content: normal;
+    border: none;
+  }
+  @top-right {
+    content: normal;
+    border: none;
+  }
+}
+
+@page {
+  size: A4;
+  margin-bottom: 45mm;
+  padding-top: 20px;
+}
+
+/* Dark mode. */
+@media (prefers-color-scheme: dark) {
+:root {
+  --background-color: #121212;
+  --text-color: #f0f0f0;
+  --title-color: #fff;
+  --link-color: #4da4f0;
+  --highlight-color: #282828;
+  --line-color: #444;
+  --pilcrow-weak: #444;
+  --pilcrow-strong: #666;
+  scrollbar-color: #777 #333;
+}
+}
+
+/* SVG Trick: a prefix match works because only black and white are allowed */
+svg {
+  & :is([stroke="black"], [stroke^="#000"]) {
+    stroke: var(--text-color);
+  }
+  & :is([stroke="white"], [stroke^="#fff"]) {
+    stroke: var(--background-color);
+  }
+  & :is([fill="black"], [fill^="#000"], :not([fill])) {
+    fill: var(--text-color);
+  }
+  & :is([fill="white"], [fill^="#fff"]) {
+    fill: var(--background-color);
+  }
+}
+</style>
+
+</head>
+<body class="xml2rfc">
+<table class="ears">
+<thead><tr>
+<td class="left">Internet-Draft</td>
+<td class="center">Approval-Based DCR</td>
+<td class="right">July 2026</td>
+</tr></thead>
+<tfoot><tr>
+<td class="left">Dellaert</td>
+<td class="center">Expires 21 January 2027</td>
+<td class="right">[Page]</td>
+</tr></tfoot>
+</table>
+<div id="external-metadata" class="document-information"></div>
+<div id="internal-metadata" class="document-information">
+<dl id="identifiers">
+<dt class="label-workgroup">Workgroup:</dt>
+<dd class="workgroup">Web Authorization Protocol</dd>
+<dt class="label-internet-draft">Internet-Draft:</dt>
+<dd class="internet-draft">draft-dellaert-oauth-approval-based-dcr-latest</dd>
+<dt class="label-published">Published:</dt>
+<dd class="published">
+<time datetime="2026-07-20" class="published">20 July 2026</time>
+    </dd>
+<dt class="label-intended-status">Intended Status:</dt>
+<dd class="intended-status">Standards Track</dd>
+<dt class="label-expires">Expires:</dt>
+<dd class="expires"><time datetime="2027-01-21">21 January 2027</time></dd>
+<dt class="label-authors">Author:</dt>
+<dd class="authors">
+<div class="author">
+      <div class="author-name">P. Dellaert</div>
+<div class="org">Amazon</div>
+</div>
+</dd>
+</dl>
+</div>
+<h1 id="title">OAuth 2.0 Approval-Based Dynamic Client Registration</h1>
+<section id="section-abstract">
+      <h2 id="abstract"><a href="#abstract" class="selfRef">Abstract</a></h2>
+<p id="section-abstract-1">This document specifies an extension to the OAuth 2.0 Dynamic Client Registration Protocol (<span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>) that enables registration of a client with an authorization server through an explicit approval step performed by an approving party, typically the user running the client, without requiring the client to possess an Initial Access Token (IAT) beforehand. The client submits its desired metadata to the existing client registration endpoint and signals that it can accept a deferred, approval-based registration. When the authorization server requires approval, it defers completion of the registration and returns a 202 (Accepted) response carrying a registration code and a verification challenge. The client polls the same registration endpoint, presenting the registration code. The approving party, authenticated to the authorization server through a mechanism of the authorization server's choosing, responds to the verification challenge and approves or denies the registration. On approval, a subsequent poll returns a registered client identifier and, where applicable, a client secret.<a href="#section-abstract-1" class="pilcrow">¶</a></p>
+<p id="section-abstract-2">This extension preserves the authorization server operator's ability to require an authenticated, policy-controlled approval for every new client record, while removing the operational burden of issuing an Initial Access Token out of band.<a href="#section-abstract-2" class="pilcrow">¶</a></p>
+</section>
+<section class="note rfcEditorRemove" id="section-note.1">
+      <h2 id="name-about-this-document">
+<a href="#name-about-this-document" class="section-name selfRef">About This Document</a>
+      </h2>
+<p id="section-note.1-1">This note is to be removed before publishing as an RFC.<a href="#section-note.1-1" class="pilcrow">¶</a></p>
+<p id="section-note.1-2">
+        The latest revision of this draft can be found at <span><a href="https://pdellaert.github.io/draft-dellaert-oauth-approval-based-dcr/draft-dellaert-oauth-approval-based-dcr.html">https://pdellaert.github.io/draft-dellaert-oauth-approval-based-dcr/draft-dellaert-oauth-approval-based-dcr.html</a></span>.
+        Status information for this document may be found at <span><a href="https://datatracker.ietf.org/doc/draft-dellaert-oauth-approval-based-dcr/">https://datatracker.ietf.org/doc/draft-dellaert-oauth-approval-based-dcr/</a></span>.<a href="#section-note.1-2" class="pilcrow">¶</a></p>
+<p id="section-note.1-3">
+        Discussion of this document takes place on the
+        Web Authorization Protocol Working Group mailing list (<span><a href="mailto:oauth@ietf.org">mailto:oauth@ietf.org</a></span>),
+        which is archived at <span><a href="https://mailarchive.ietf.org/arch/browse/oauth/">https://mailarchive.ietf.org/arch/browse/oauth/</a></span>.
+        Subscribe at <span><a href="https://www.ietf.org/mailman/listinfo/oauth/">https://www.ietf.org/mailman/listinfo/oauth/</a></span>.<a href="#section-note.1-3" class="pilcrow">¶</a></p>
+<p id="section-note.1-4">Source for this draft and an issue tracker can be found at
+        <span><a href="https://github.com/pdellaert/draft-dellaert-oauth-approval-based-dcr">https://github.com/pdellaert/draft-dellaert-oauth-approval-based-dcr</a></span>.<a href="#section-note.1-4" class="pilcrow">¶</a></p>
+</section>
+<div id="status-of-memo">
+<section id="section-boilerplate.1">
+        <h2 id="name-status-of-this-memo">
+<a href="#name-status-of-this-memo" class="section-name selfRef">Status of This Memo</a>
+        </h2>
+<p id="section-boilerplate.1-1">
+        This Internet-Draft is submitted in full conformance with the
+        provisions of BCP 78 and BCP 79.<a href="#section-boilerplate.1-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-2">
+        Internet-Drafts are working documents of the Internet Engineering Task
+        Force (IETF). Note that other groups may also distribute working
+        documents as Internet-Drafts. The list of current Internet-Drafts is
+        at <span><a href="https://datatracker.ietf.org/drafts/current/">https://datatracker.ietf.org/drafts/current/</a></span>.<a href="#section-boilerplate.1-2" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-3">
+        Internet-Drafts are draft documents valid for a maximum of six months
+        and may be updated, replaced, or obsoleted by other documents at any
+        time. It is inappropriate to use Internet-Drafts as reference
+        material or to cite them other than as "work in progress."<a href="#section-boilerplate.1-3" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.1-4">
+        This Internet-Draft will expire on 21 January 2027.<a href="#section-boilerplate.1-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="copyright">
+<section id="section-boilerplate.2">
+        <h2 id="name-copyright-notice">
+<a href="#name-copyright-notice" class="section-name selfRef">Copyright Notice</a>
+        </h2>
+<p id="section-boilerplate.2-1">
+            Copyright (c) 2026 IETF Trust and the persons identified as the
+            document authors. All rights reserved.<a href="#section-boilerplate.2-1" class="pilcrow">¶</a></p>
+<p id="section-boilerplate.2-2">
+            This document is subject to BCP 78 and the IETF Trust's Legal
+            Provisions Relating to IETF Documents
+            (<span><a href="https://trustee.ietf.org/license-info">https://trustee.ietf.org/license-info</a></span>) in effect on the date of
+            publication of this document. Please review these documents
+            carefully, as they describe your rights and restrictions with
+            respect to this document. Code Components extracted from this
+            document must include Revised BSD License text as described in
+            Section 4.e of the Trust Legal Provisions and are provided without
+            warranty as described in the Revised BSD License.<a href="#section-boilerplate.2-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="toc">
+<section id="section-toc.1">
+        <a href="#" onclick="scroll(0,0)" class="toplink">▲</a><h2 id="name-table-of-contents">
+<a href="#name-table-of-contents" class="section-name selfRef">Table of Contents</a>
+        </h2>
+<nav class="toc"><ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1">
+            <p id="section-toc.1-1.1.1" class="keepWithNext"><a href="#section-1" class="auto internal xref">1</a>.  <a href="#name-introduction" class="internal xref">Introduction</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.1.2.1">
+                <p id="section-toc.1-1.1.2.1.1" class="keepWithNext"><a href="#section-1.1" class="auto internal xref">1.1</a>.  <a href="#name-protocol-flow" class="internal xref">Protocol Flow</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.2">
+            <p id="section-toc.1-1.2.1" class="keepWithNext"><a href="#section-2" class="auto internal xref">2</a>.  <a href="#name-terminology" class="internal xref">Terminology</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3">
+            <p id="section-toc.1-1.3.1"><a href="#section-3" class="auto internal xref">3</a>.  <a href="#name-protocol" class="internal xref">Protocol</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.1">
+                <p id="section-toc.1-1.3.2.1.1"><a href="#section-3.1" class="auto internal xref">3.1</a>.  <a href="#name-registration-request" class="internal xref">Registration Request</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.2">
+                <p id="section-toc.1-1.3.2.2.1"><a href="#section-3.2" class="auto internal xref">3.2</a>.  <a href="#name-registration-response" class="internal xref">Registration Response</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.2.2.1">
+                    <p id="section-toc.1-1.3.2.2.2.1.1"><a href="#section-3.2.1" class="auto internal xref">3.2.1</a>.  <a href="#name-immediate-registration" class="internal xref">Immediate Registration</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.2.2.2">
+                    <p id="section-toc.1-1.3.2.2.2.2.1"><a href="#section-3.2.2" class="auto internal xref">3.2.2</a>.  <a href="#name-deferred-registration" class="internal xref">Deferred Registration</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.2.2.3">
+                    <p id="section-toc.1-1.3.2.2.2.3.1"><a href="#section-3.2.3" class="auto internal xref">3.2.3</a>.  <a href="#name-registration-request-error-" class="internal xref">Registration Request Error Responses</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3">
+                <p id="section-toc.1-1.3.2.3.1"><a href="#section-3.3" class="auto internal xref">3.3</a>.  <a href="#name-registration-polling" class="internal xref">Registration Polling</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.1">
+                    <p id="section-toc.1-1.3.2.3.2.1.1"><a href="#section-3.3.1" class="auto internal xref">3.3.1</a>.  <a href="#name-polling-request" class="internal xref">Polling Request</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.2">
+                    <p id="section-toc.1-1.3.2.3.2.2.1"><a href="#section-3.3.2" class="auto internal xref">3.3.2</a>.  <a href="#name-polling-response-while-pend" class="internal xref">Polling Response While Pending</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.3">
+                    <p id="section-toc.1-1.3.2.3.2.3.1"><a href="#section-3.3.3" class="auto internal xref">3.3.3</a>.  <a href="#name-polling-rate-limiting" class="internal xref">Polling Rate Limiting</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.4">
+                    <p id="section-toc.1-1.3.2.3.2.4.1"><a href="#section-3.3.4" class="auto internal xref">3.3.4</a>.  <a href="#name-polling-response-on-success" class="internal xref">Polling Response on Success</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.3.2.5">
+                    <p id="section-toc.1-1.3.2.3.2.5.1"><a href="#section-3.3.5" class="auto internal xref">3.3.5</a>.  <a href="#name-polling-error-responses" class="internal xref">Polling Error Responses</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.3.2.4">
+                <p id="section-toc.1-1.3.2.4.1"><a href="#section-3.4" class="auto internal xref">3.4</a>.  <a href="#name-cancellation" class="internal xref">Cancellation</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4">
+            <p id="section-toc.1-1.4.1"><a href="#section-4" class="auto internal xref">4</a>.  <a href="#name-approval-interaction" class="internal xref">Approval Interaction</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.4.2.1">
+                <p id="section-toc.1-1.4.2.1.1"><a href="#section-4.1" class="auto internal xref">4.1</a>.  <a href="#name-approver-association" class="internal xref">Approver Association</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.5">
+            <p id="section-toc.1-1.5.1"><a href="#section-5" class="auto internal xref">5</a>.  <a href="#name-authorization-server-metada" class="internal xref">Authorization Server Metadata</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6">
+            <p id="section-toc.1-1.6.1"><a href="#section-6" class="auto internal xref">6</a>.  <a href="#name-security-considerations" class="internal xref">Security Considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.1">
+                <p id="section-toc.1-1.6.2.1.1"><a href="#section-6.1" class="auto internal xref">6.1</a>.  <a href="#name-registration-endpoint-abuse" class="internal xref">Registration Endpoint Abuse</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.2">
+                <p id="section-toc.1-1.6.2.2.1"><a href="#section-6.2" class="auto internal xref">6.2</a>.  <a href="#name-verification-code-phishing" class="internal xref">Verification Code Phishing</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.3">
+                <p id="section-toc.1-1.6.2.3.1"><a href="#section-6.3" class="auto internal xref">6.3</a>.  <a href="#name-verification-code-brute-for" class="internal xref">Verification Code Brute Forcing</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.4">
+                <p id="section-toc.1-1.6.2.4.1"><a href="#section-6.4" class="auto internal xref">6.4</a>.  <a href="#name-registration-code-compromis" class="internal xref">Registration Code Compromise</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.6.2.5">
+                <p id="section-toc.1-1.6.2.5.1"><a href="#section-6.5" class="auto internal xref">6.5</a>.  <a href="#name-registration-cancellation" class="internal xref">Registration Cancellation</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7">
+            <p id="section-toc.1-1.7.1"><a href="#section-7" class="auto internal xref">7</a>.  <a href="#name-privacy-considerations" class="internal xref">Privacy Considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.1">
+                <p id="section-toc.1-1.7.2.1.1"><a href="#section-7.1" class="auto internal xref">7.1</a>.  <a href="#name-approver-identity-linkabili" class="internal xref">Approver Identity Linkability</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.2">
+                <p id="section-toc.1-1.7.2.2.1"><a href="#section-7.2" class="auto internal xref">7.2</a>.  <a href="#name-denied-and-expired-registra" class="internal xref">Denied and Expired Registrations</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.3">
+                <p id="section-toc.1-1.7.2.3.1"><a href="#section-7.3" class="auto internal xref">7.3</a>.  <a href="#name-verification-uri-access-log" class="internal xref">Verification URI Access Logs</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8">
+            <p id="section-toc.1-1.8.1"><a href="#section-8" class="auto internal xref">8</a>.  <a href="#name-iana-considerations" class="internal xref">IANA Considerations</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.1">
+                <p id="section-toc.1-1.8.2.1.1"><a href="#section-8.1" class="auto internal xref">8.1</a>.  <a href="#name-oauth-authorization-server-" class="internal xref">OAuth Authorization Server Metadata</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.1.2.1">
+                    <p id="section-toc.1-1.8.2.1.2.1.1"><a href="#section-8.1.1" class="auto internal xref">8.1.1</a>.  <a href="#name-registration-modes-supporte" class="internal xref">Registration Modes Supported</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2">
+                <p id="section-toc.1-1.8.2.2.1"><a href="#section-8.2" class="auto internal xref">8.2</a>.  <a href="#name-oauth-dynamic-client-regist" class="internal xref">OAuth Dynamic Client Registration Metadata</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.2.2.1">
+                    <p id="section-toc.1-1.8.2.2.2.1.1"><a href="#section-8.2.1" class="auto internal xref">8.2.1</a>.  <a href="#name-registration-mode" class="internal xref">Registration Mode</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3">
+                <p id="section-toc.1-1.8.2.3.1"><a href="#section-8.3" class="auto internal xref">8.3</a>.  <a href="#name-oauth-client-registration-m" class="internal xref">OAuth Client Registration Modes</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3.2.1">
+                    <p id="section-toc.1-1.8.2.3.2.1.1"><a href="#section-8.3.1" class="auto internal xref">8.3.1</a>.  <a href="#name-registration-template" class="internal xref">Registration Template</a></p>
+</li>
+                  <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.3.2.2">
+                    <p id="section-toc.1-1.8.2.3.2.2.1"><a href="#section-8.3.2" class="auto internal xref">8.3.2</a>.  <a href="#name-initial-registry-contents" class="internal xref">Initial Registry Contents</a></p>
+</li>
+                </ul>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4">
+                <p id="section-toc.1-1.8.2.4.1"><a href="#section-8.4" class="auto internal xref">8.4</a>.  <a href="#name-oauth-extensions-error-regi" class="internal xref">OAuth Extensions Error Registry</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.8.2.4.2.1">
+                    <p id="section-toc.1-1.8.2.4.2.1.1"><a href="#section-8.4.1" class="auto internal xref">8.4.1</a>.  <a href="#name-invalid-registration" class="internal xref">Invalid Registration</a></p>
+</li>
+                </ul>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9">
+            <p id="section-toc.1-1.9.1"><a href="#section-9" class="auto internal xref">9</a>.  <a href="#name-references" class="internal xref">References</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.1">
+                <p id="section-toc.1-1.9.2.1.1"><a href="#section-9.1" class="auto internal xref">9.1</a>.  <a href="#name-normative-references" class="internal xref">Normative References</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.9.2.2">
+                <p id="section-toc.1-1.9.2.2.1"><a href="#section-9.2" class="auto internal xref">9.2</a>.  <a href="#name-informative-references" class="internal xref">Informative References</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10">
+            <p id="section-toc.1-1.10.1"><a href="#appendix-A" class="auto internal xref"></a><a href="#name-example-use-cases" class="internal xref">Example Use Cases</a></p>
+<ul class="compact toc ulBare ulEmpty">
+<li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.1">
+                <p id="section-toc.1-1.10.2.1.1"><a href="#appendix-A.1" class="auto internal xref"></a><a href="#name-minimal-registration-with-h" class="internal xref">Minimal Registration with Human User Approval</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.2">
+                <p id="section-toc.1-1.10.2.2.1"><a href="#appendix-A.2" class="auto internal xref"></a><a href="#name-registration-producing-a-ur" class="internal xref">Registration Producing a URL Client Identifier</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.10.2.3">
+                <p id="section-toc.1-1.10.2.3.1"><a href="#appendix-A.3" class="auto internal xref"></a><a href="#name-high-assurance-approval-via" class="internal xref">High-Assurance Approval via a Native Application</a></p>
+</li>
+            </ul>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.11">
+            <p id="section-toc.1-1.11.1"><a href="#appendix-B" class="auto internal xref"></a><a href="#name-acknowledgments" class="internal xref">Acknowledgments</a></p>
+</li>
+          <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.12">
+            <p id="section-toc.1-1.12.1"><a href="#appendix-C" class="auto internal xref"></a><a href="#name-authors-address" class="internal xref">Author's Address</a></p>
+</li>
+        </ul>
+</nav>
+</section>
+</div>
+<div id="introduction">
+<section id="section-1">
+      <h2 id="name-introduction">
+<a href="#section-1" class="section-number selfRef">1. </a><a href="#name-introduction" class="section-name selfRef">Introduction</a>
+      </h2>
+<p id="section-1-1">The OAuth 2.0 Dynamic Client Registration Protocol (<span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>) defines a registration endpoint at which a client presents desired metadata and receives a client identifier and, where applicable, a client secret. <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> supports two modes: open registration, in which any caller may register, and protected registration, in which the caller must present an Initial Access Token (IAT). <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3 deliberately leaves the method by which an IAT is obtained out of scope.<a href="#section-1-1" class="pilcrow">¶</a></p>
+<p id="section-1-2">In practice, open registration is unacceptable to many authorization server operators because it permits unbounded database growth, enables denial of service against the registration endpoint, and places no authenticated trust anchor at the root of each client record. Protected registration requires the client to obtain an IAT through some other channel.<a href="#section-1-2" class="pilcrow">¶</a></p>
+<p id="section-1-3">A growing class of clients, including command-line tools, agentic software, and native applications distributed at scale, cannot feasibly obtain an IAT through a manual out-of-band process. Their authorization servers also cannot accept open registration. No standardized in-band mechanism exists today for these clients to register with an authenticated approval checkpoint.<a href="#section-1-3" class="pilcrow">¶</a></p>
+<p id="section-1-4">Registration binds a specific client instance to the approving party who authorized it and gives the authorization server a per-instance record it can later manage and revoke (see <a href="#approver-association" class="auto internal xref">Section 4.1</a>, and <span>[<a href="#RFC7592" class="cite xref">RFC7592</a>]</span> where supported). Making the client identifier self-describing, as the client identifier metadata document of <span>[<a href="#I-D.ietf-oauth-client-id-metadata-document" class="cite xref">I-D.ietf-oauth-client-id-metadata-document</a>]</span> does, can remove the need for a stored registration record but does not by itself establish that per-instance binding; this extension targets deployments that require it.<a href="#section-1-4" class="pilcrow">¶</a></p>
+<p id="section-1-5">This document specifies a third approach. The client submits its desired metadata to the client registration endpoint defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> and signals, in the request, that it is willing to accept a deferred, approval-based registration. When authorization server policy requires approval, the server defers completion of the registration and returns a 202 (Accepted) response that carries a registration code and a verification challenge, rather than a completed registration. The client polls the same registration endpoint for the result while an approving party (typically the user running the client), separately authenticated to the authorization server, responds to the verification challenge and approves or denies the request. On approval, the authorization server returns the completed registration in response to the next poll. This use of the registration endpoint's response to defer completion, and the requirement that the client signal its willingness before the server defers, follow the pattern of the deferred token response described in <span>[<a href="#I-D.gerber-oauth-deferred-token-response" class="cite xref">I-D.gerber-oauth-deferred-token-response</a>]</span>.<a href="#section-1-5" class="pilcrow">¶</a></p>
+<p id="section-1-6">The approving party's identity and authentication mechanism are determined by authorization server policy and are not constrained by this specification. The protocol is the same regardless of who approves.<a href="#section-1-6" class="pilcrow">¶</a></p>
+<p id="section-1-7">The polling pattern and short-code presentation are inspired by the OAuth 2.0 Device Authorization Grant (<span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span>) but this extension is not a device flow. The outcome is a registered client, not an access token. The initiating party is a client application, which may or may not correspond to a discrete device and may or may not run on a headless device.<a href="#section-1-7" class="pilcrow">¶</a></p>
+<p id="section-1-8">This specification governs only the registration exchange. It does not constrain where or how the client's metadata is hosted, nor the form of the resulting <code>client_id</code> and <code>client_secret</code>. Where authorization server policy allows, the issued <code>client_id</code> <span class="bcp14">MAY</span> be an HTTPS URL; the client identifier metadata document mechanism of <span>[<a href="#I-D.ietf-oauth-client-id-metadata-document" class="cite xref">I-D.ietf-oauth-client-id-metadata-document</a>]</span> is one such scheme, and its use with this extension is neither required nor precluded.<a href="#section-1-8" class="pilcrow">¶</a></p>
+<div id="protocol-flow">
+<section id="section-1.1">
+        <h3 id="name-protocol-flow">
+<a href="#section-1.1" class="section-number selfRef">1.1. </a><a href="#name-protocol-flow" class="section-name selfRef">Protocol Flow</a>
+        </h3>
+<span id="name-approval-based-dynamic-clie"></span><div id="fig-flow">
+<figure id="figure-1">
+          <div class="alignCenter art-ascii-art art-text artwork" id="section-1.1-1.1">
+<pre>
+  +----------+                                   +---------------+
+  |          |&gt;---(A)-- Registration Request: --&gt;|               |
+  |          |          Client Metadata,         |               |
+  |          |          registration_mode        |               |
+  |          |                                   |               |
+  |          |&lt;---(B)-- 202 Accepted (pending) -&lt;|               |
+  |          |          Registration Code,       |               |
+  |          |          Verification Code,       |               |
+  |          |          Verification URI         |               |
+  |          |                                   |               |
+  |          |&gt;---(C)-- Polling Request --------&gt;|               |
+  |          |&lt;---(D)-- 202 Accepted (pending) -&lt;|               |
+  |          |                                   |               |
+  |  Client  |       +-----------------+         | Authorization |
+  |          |       |                 |&gt;--(E)--&gt;|     Server    |
+  |          |       | Approving Party | Review  |               |
+  |          |       |                 | +       |               |
+  |          |       |                 | Approve |               |
+  |          |       +-----------------+         |               |
+  |          |                                   |               |
+  |          |&gt;---(F)-- Polling Request --------&gt;|               |
+  |          |&lt;---(G)-- Registration Response --&lt;|               |
+  +----------+                                   +---------------+
+</pre>
+</div>
+<figcaption><a href="#figure-1" class="selfRef">Figure 1</a>:
+<a href="#name-approval-based-dynamic-clie" class="selfRef">Approval-Based Dynamic Client Registration Flow</a>
+          </figcaption></figure>
+</div>
+<p id="section-1.1-2">The approval-based dynamic client registration flow illustrated in <a href="#fig-flow" class="auto internal xref">Figure 1</a> includes the following steps. All requests are made to the client registration endpoint of <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>.<a href="#section-1.1-2" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-1.1-3">
+          <dt id="section-1.1-3.1">(A):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.2">
+            <p id="section-1.1-3.2.1">The client sends its desired client metadata to the registration endpoint, including <code>registration_mode</code> to signal that it can accept an approval-based registration.<a href="#section-1.1-3.2.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.1-3.3">(B):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.4">
+            <p id="section-1.1-3.4.1">Because approval is required, the authorization server defers the registration and returns a 202 (Accepted) response carrying a registration code, a verification code, and a verification URI.<a href="#section-1.1-3.4.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.1-3.5">(C):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.6">
+            <p id="section-1.1-3.6.1">The client polls the registration endpoint with the registration code.<a href="#section-1.1-3.6.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.1-3.7">(D):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.8">
+            <p id="section-1.1-3.8.1">The authorization server returns 202 (Accepted) until the approving party acts.<a href="#section-1.1-3.8.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.1-3.9">(E):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.10">
+            <p id="section-1.1-3.10.1">The approving party accesses the verification URI, authenticates to the authorization server, reviews the requested metadata or evaluates the client, and approves or denies.<a href="#section-1.1-3.10.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.1-3.11">(F):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.12">
+            <p id="section-1.1-3.12.1">After approval, the client polls the registration endpoint again with the registration code.<a href="#section-1.1-3.12.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+<dt id="section-1.1-3.13">(G):</dt>
+          <dd style="margin-left: 1.5em" id="section-1.1-3.14">
+            <p id="section-1.1-3.14.1">The authorization server returns the registration outcome.<a href="#section-1.1-3.14.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+</dl>
+</section>
+</div>
+</section>
+</div>
+<div id="terminology">
+<section id="section-2">
+      <h2 id="name-terminology">
+<a href="#section-2" class="section-number selfRef">2. </a><a href="#name-terminology" class="section-name selfRef">Terminology</a>
+      </h2>
+<p id="section-2-1">The key words "<span class="bcp14">MUST</span>", "<span class="bcp14">MUST NOT</span>", "<span class="bcp14">REQUIRED</span>", "<span class="bcp14">SHALL</span>", "<span class="bcp14">SHALL NOT</span>", "<span class="bcp14">SHOULD</span>", "<span class="bcp14">SHOULD NOT</span>", "<span class="bcp14">RECOMMENDED</span>", "<span class="bcp14">NOT RECOMMENDED</span>",
+"<span class="bcp14">MAY</span>", and "<span class="bcp14">OPTIONAL</span>" in this document are to be interpreted as
+described in BCP 14 <span>[<a href="#RFC2119" class="cite xref">RFC2119</a>]</span> <span>[<a href="#RFC8174" class="cite xref">RFC8174</a>]</span> when, and only when, they
+appear in all capitals, as shown here.<a href="#section-2-1" class="pilcrow">¶</a></p>
+<p id="section-2-2">This document uses the following terms as defined in <span>[<a href="#RFC6749" class="cite xref">RFC6749</a>]</span>: "access token", "authorization code", "authorization endpoint", "authorization server", "client", "client identifier", "client secret", "resource owner", "scope". This document also uses the terms "client metadata" and "Initial Access Token" (IAT) as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>. The <code>verification_uri</code>, <code>verification_uri_complete</code>, <code>expires_in</code>, and <code>interval</code> fields are reused from <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 3.2 with the same meaning. The <code>registration_code</code> and <code>verification_code</code> fields play the same protocol roles as the <code>device_code</code> and <code>user_code</code> fields of <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span>, scoped to client registration.<a href="#section-2-2" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-2-3">
+        <dt id="section-2-3.1">Approving Party:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.2">
+          <p id="section-2-3.2.1">An entity authenticated to the authorization server that responds to the verification challenge and approves or denies the client's registration request. The authentication strength and trust model applied to the approving party are determined by authorization server policy. The approving party is deliberately distinct from the <span>[<a href="#RFC6749" class="cite xref">RFC6749</a>]</span> "resource owner" and "end-user": this protocol approves the registration of a client, not access to a protected resource, and the approving party is not required to own or control any resource. The approving party's authenticated identity is bound to the resulting registration (see <a href="#approver-association" class="auto internal xref">Section 4.1</a>).<a href="#section-2-3.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.3">Verification Code:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.4">
+          <p id="section-2-3.4.1">A short, transcribable code that the approving party presents at the verification URI to identify a specific pending registration.<a href="#section-2-3.4.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.5">Verification URI:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.6">
+          <p id="section-2-3.6.1">A URL at which an approving party completes the approval interaction.<a href="#section-2-3.6.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+<dt id="section-2-3.7">Registration Code:</dt>
+        <dd style="margin-left: 1.5em" id="section-2-3.8">
+          <p id="section-2-3.8.1">A long, opaque, high-entropy code that the client uses to poll the client registration endpoint for the outcome of a deferred registration.<a href="#section-2-3.8.1" class="pilcrow">¶</a></p>
+</dd>
+      <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="protocol">
+<section id="section-3">
+      <h2 id="name-protocol">
+<a href="#section-3" class="section-number selfRef">3. </a><a href="#name-protocol" class="section-name selfRef">Protocol</a>
+      </h2>
+<p id="section-3-1">This extension operates at the client registration endpoint defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3. All requests defined by this specification (registration, polling, and cancellation) <span class="bcp14">MUST</span> be sent to that endpoint.<a href="#section-3-1" class="pilcrow">¶</a></p>
+<p id="section-3-2">A client signals that it is willing to accept a deferred, approval-based registration through the <code>registration_mode</code> member of its registration request. When authorization server policy requires approval, the server defers the registration and returns a 202 (Accepted) response; the client then polls the same endpoint for the outcome.<a href="#section-3-2" class="pilcrow">¶</a></p>
+<p id="section-3-3">As required by <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3, the registration endpoint <span class="bcp14">MUST</span> be protected by a transport-layer security mechanism, and the use of TLS <span class="bcp14">MUST</span> follow the recommendations in <span>[<a href="#RFC9325" class="cite xref">RFC9325</a>]</span>. The authorization server <span class="bcp14">MUST NOT</span> redirect requests for the registration endpoint to a URI whose scheme is not HTTPS. Clients <span class="bcp14">MUST NOT</span> follow redirects from the registration endpoint to non-HTTPS URIs.<a href="#section-3-3" class="pilcrow">¶</a></p>
+<div id="registration-request">
+<section id="section-3.1">
+        <h3 id="name-registration-request">
+<a href="#section-3.1" class="section-number selfRef">3.1. </a><a href="#name-registration-request" class="section-name selfRef">Registration Request</a>
+        </h3>
+<p id="section-3.1-1">The client sends a client registration request as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3.1. To request the approval-based flow defined in this specification, the client additionally includes the following member:<a href="#section-3.1-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.1-2">
+          <dt id="section-3.1-2.1">registration_mode:</dt>
+          <dd style="margin-left: 1.5em" id="section-3.1-2.2">
+            <p id="section-3.1-2.2.1"><span class="bcp14">REQUIRED</span> to request the approval-based flow defined in this specification; otherwise <span class="bcp14">OPTIONAL</span>. A JSON array of registration mode values the client is willing to accept, drawn from the "OAuth Client Registration Modes" registry (<a href="#modes-registry" class="auto internal xref">Section 8.3</a>). Including the value <code>approval</code> signals that the client is prepared to accept a deferred, approval-based registration and to poll for its outcome. The value <code>immediate</code>, denoting synchronous completion as in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>, is accepted by every client and need not be listed. Values the authorization server does not recognize <span class="bcp14">MUST</span> be ignored.<a href="#section-3.1-2.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+</dl>
+<p id="section-3.1-3">The authorization server <span class="bcp14">MUST NOT</span> defer a registration for a request whose <code>registration_mode</code> does not include <code>approval</code>. Including <code>approval</code> does not entitle the client to a deferred registration; the authorization server completes the request synchronously when its policy does not require approval. A registration request that omits <code>registration_mode</code>, or whose <code>registration_mode</code> does not include <code>approval</code>, is an ordinary <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> request: the authorization server either completes it synchronously or rejects it with a registration error, and never defers it. This preserves compatibility with clients that expect a synchronous response. An authorization server that does not support this extension ignores the <code>registration_mode</code> member and processes the request per <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>; a client detects the absence of support from the resulting synchronous response, or in advance from authorization server metadata (<a href="#discovery" class="auto internal xref">Section 5</a>).<a href="#section-3.1-3" class="pilcrow">¶</a></p>
+<p id="section-3.1-4">For example, the client makes the following request:<a href="#section-3.1-4" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.1-5">
+<pre>
+POST /register HTTP/1.1
+Host: as.example.com
+Content-Type: application/json
+
+{
+  "client_name": "Example Client",
+  "redirect_uris": ["http://127.0.0.1:41337/callback"],
+  "token_endpoint_auth_method": "client_secret_basic",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "registration_mode": ["approval"]
+}
+</pre><a href="#section-3.1-5" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="registration-response">
+<section id="section-3.2">
+        <h3 id="name-registration-response">
+<a href="#section-3.2" class="section-number selfRef">3.2. </a><a href="#name-registration-response" class="section-name selfRef">Registration Response</a>
+        </h3>
+<p id="section-3.2-1">The authorization server applies its policy to the registration request. It returns one of two outcomes.<a href="#section-3.2-1" class="pilcrow">¶</a></p>
+<div id="immediate-registration">
+<section id="section-3.2.1">
+          <h4 id="name-immediate-registration">
+<a href="#section-3.2.1" class="section-number selfRef">3.2.1. </a><a href="#name-immediate-registration" class="section-name selfRef">Immediate Registration</a>
+          </h4>
+<p id="section-3.2.1-1">If authorization server policy does not require approval for this request (for example, open registration or a request accompanied by an Initial Access Token per <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>), the authorization server completes the registration synchronously and responds as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3.2.1, with an HTTP 201 (Created) status code and the Client Information Response. No polling occurs. This is the ordinary <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> behavior and is unchanged by this specification.<a href="#section-3.2.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="deferred-registration">
+<section id="section-3.2.2">
+          <h4 id="name-deferred-registration">
+<a href="#section-3.2.2" class="section-number selfRef">3.2.2. </a><a href="#name-deferred-registration" class="section-name selfRef">Deferred Registration</a>
+          </h4>
+<p id="section-3.2.2-1">If authorization server policy requires approval and the client's <code>registration_mode</code> includes <code>approval</code>, the authorization server defers the registration. A deferred registration has been accepted for processing but not yet completed. The authorization server creates a pending registration record and responds with an HTTP 202 (Accepted) status code (<span>[<a href="#RFC9110" class="cite xref">RFC9110</a>]</span> Section 15.3.3), <code>Content-Type: application/json</code>, <code>Cache-Control: no-store</code>, and a JSON object (<span>[<a href="#RFC8259" class="cite xref">RFC8259</a>]</span>) containing the following members:<a href="#section-3.2.2-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.2.2-2">
+            <dt id="section-3.2.2-2.1">registration_code:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.2.2-2.2">
+              <p id="section-3.2.2-2.2.1"><span class="bcp14">REQUIRED</span>. The long, opaque code the client uses to poll the registration endpoint for the outcome.<a href="#section-3.2.2-2.2.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.2.2-2.3">verification_code:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.2.2-2.4">
+              <p id="section-3.2.2-2.4.1"><span class="bcp14">REQUIRED</span>. The short, transcribable code presented to the approving party at the verification URI to identify a specific pending registration.<a href="#section-3.2.2-2.4.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.2.2-2.5">verification_uri:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.2.2-2.6">
+              <p id="section-3.2.2-2.6.1"><span class="bcp14">REQUIRED</span>. URL at which the approving party completes approval.<a href="#section-3.2.2-2.6.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.2.2-2.7">verification_uri_complete:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.2.2-2.8">
+              <p id="section-3.2.2-2.8.1"><span class="bcp14">OPTIONAL</span>. A verification URI that includes the <code>verification_code</code> (or other information with the same function as the <code>verification_code</code>), which is designed for non-textual transmission.<a href="#section-3.2.2-2.8.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.2.2-2.9">expires_in:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.2.2-2.10">
+              <p id="section-3.2.2-2.10.1"><span class="bcp14">REQUIRED</span>. Lifetime in seconds of the <code>registration_code</code> and the <code>verification_code</code>.<a href="#section-3.2.2-2.10.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.2.2-2.11">interval:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.2.2-2.12">
+              <p id="section-3.2.2-2.12.1"><span class="bcp14">OPTIONAL</span>. Minimum number of seconds the client <span class="bcp14">MUST</span> wait between polling requests. Defaults to 5. The client <span class="bcp14">MUST</span> retain this value for the lifetime of the <code>registration_code</code>, because subsequent 202 (Accepted) responses need not repeat it.<a href="#section-3.2.2-2.12.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+<p id="section-3.2.2-3">For example, the authorization server responds:<a href="#section-3.2.2-3" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.2.2-4">
+<pre>
+HTTP/1.1 202 Accepted
+Content-Type: application/json
+Cache-Control: no-store
+
+{
+  "registration_code": "ZDY2NTFiYTg1N2I4NGFjYWY5N2ZmZGZhYmJiMTE0NjIyMTBjMzYyMwo",
+  "verification_code": "FBWS-TRGI",
+  "verification_uri": "https://as.example.com/register-verification",
+  "verification_uri_complete":
+    "https://as.example.com/register-verification?verification_code=FBWS-TRGI",
+  "expires_in": 600,
+  "interval": 5
+}
+</pre><a href="#section-3.2.2-4" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="registration-request-error-responses">
+<section id="section-3.2.3">
+          <h4 id="name-registration-request-error-">
+<a href="#section-3.2.3" class="section-number selfRef">3.2.3. </a><a href="#name-registration-request-error-" class="section-name selfRef">Registration Request Error Responses</a>
+          </h4>
+<p id="section-3.2.3-1">When a registration request is malformed or otherwise rejected before any pending registration is created, the authorization server returns an error response as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3.2.2: an HTTP 400 (Bad Request) status code, a <code>Content-Type</code> of <code>application/json</code>, a <code>Cache-Control: no-store</code> response header, and a JSON object with <code>error</code> and <span class="bcp14">OPTIONAL</span> <code>error_description</code> members. The error codes <code>invalid_redirect_uri</code>, <code>invalid_client_metadata</code>, <code>invalid_software_statement</code>, and <code>unapproved_software_statement</code> are used as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3.2.2.<a href="#section-3.2.3-1" class="pilcrow">¶</a></p>
+<p id="section-3.2.3-2">If authorization server policy requires approval but the client's <code>registration_mode</code> does not include <code>approval</code>, the authorization server cannot complete the registration synchronously and <span class="bcp14">MUST NOT</span> defer it (see <a href="#protocol" class="auto internal xref">Section 3</a>); it rejects the request with a registration error as described here, using <code>invalid_client_metadata</code> unless a more specific code applies.<a href="#section-3.2.3-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="registration-polling">
+<section id="section-3.3">
+        <h3 id="name-registration-polling">
+<a href="#section-3.3" class="section-number selfRef">3.3. </a><a href="#name-registration-polling" class="section-name selfRef">Registration Polling</a>
+        </h3>
+<p id="section-3.3-1">After receiving a 202 (Accepted) response, the client polls for the outcome by sending further requests to the same client registration endpoint. The polling pattern is adopted from <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 3.4.<a href="#section-3.3-1" class="pilcrow">¶</a></p>
+<p id="section-3.3-2">Because this extension operates at the registration endpoint, whose success status is 201 (Created), a pending registration is conveyed with 202 (Accepted), a requirement to poll less frequently with 429 (Too Many Requests), and a failed registration with 400 (Bad Request).<a href="#section-3.3-2" class="pilcrow">¶</a></p>
+<div id="polling-request">
+<section id="section-3.3.1">
+          <h4 id="name-polling-request">
+<a href="#section-3.3.1" class="section-number selfRef">3.3.1. </a><a href="#name-polling-request" class="section-name selfRef">Polling Request</a>
+          </h4>
+<p id="section-3.3.1-1">The client sends an HTTP POST to the registration endpoint. The request body <span class="bcp14">MUST</span> be a JSON object (<span>[<a href="#RFC8259" class="cite xref">RFC8259</a>]</span>) and the <code>Content-Type</code> header <span class="bcp14">MUST</span> be <code>application/json</code>. The presence of a <code>registration_code</code> member distinguishes a polling request from a registration request.<a href="#section-3.3.1-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.3.1-2">
+            <dt id="section-3.3.1-2.1">registration_code:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.3.1-2.2">
+              <p id="section-3.3.1-2.2.1"><span class="bcp14">REQUIRED</span>. The value received in the deferred registration response.<a href="#section-3.3.1-2.2.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+<p id="section-3.3.1-3">The <code>registration_code</code> is a bearer credential: presenting it is sufficient to poll for and complete the pending registration it identifies. It <span class="bcp14">MUST</span> be protected accordingly, both in transit (all requests use TLS, see <a href="#security" class="auto internal xref">Section 6</a>) and by the authorization server (see <a href="#registration-code-compromise" class="auto internal xref">Section 6.4</a>).<a href="#section-3.3.1-3" class="pilcrow">¶</a></p>
+<p id="section-3.3.1-4">For example, the client makes the following request:<a href="#section-3.3.1-4" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.3.1-5">
+<pre>
+POST /register HTTP/1.1
+Host: as.example.com
+Content-Type: application/json
+
+{
+  "registration_code": "ZDY2NTFiYTg1N2I4NGFjYWY5N2ZmZGZhYmJiMTE0NjIyMTBjMzYyMwo"
+}
+</pre><a href="#section-3.3.1-5" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="polling-pending">
+<section id="section-3.3.2">
+          <h4 id="name-polling-response-while-pend">
+<a href="#section-3.3.2" class="section-number selfRef">3.3.2. </a><a href="#name-polling-response-while-pend" class="section-name selfRef">Polling Response While Pending</a>
+          </h4>
+<p id="section-3.3.2-1">While the approving party has not yet completed the approval action, the authorization server responds to each poll with an HTTP 202 (Accepted) status code, indicating that the registration remains pending and the client <span class="bcp14">SHOULD</span> continue polling. Before each new polling request, the client <span class="bcp14">MUST</span> wait at least the number of seconds specified by the <code>interval</code> member of the deferred registration response, or 5 seconds if none was provided, and <span class="bcp14">MUST</span> respect any increase in the polling interval required by a 429 (Too Many Requests) response (see <a href="#polling-rate-limit" class="auto internal xref">Section 3.3.3</a>).<a href="#section-3.3.2-1" class="pilcrow">¶</a></p>
+<p id="section-3.3.2-2">The 202 (Accepted) response body <span class="bcp14">MAY</span> be empty. The client retains the <code>registration_code</code>, <code>interval</code>, and <code>expires_in</code> values from the deferred registration response; a 202 response need not repeat them.<a href="#section-3.3.2-2" class="pilcrow">¶</a></p>
+<p id="section-3.3.2-3">The following is a non-normative example of a 202 (Accepted) response while the client polls before approval has completed:<a href="#section-3.3.2-3" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.3.2-4">
+<pre>
+HTTP/1.1 202 Accepted
+Cache-Control: no-store
+</pre><a href="#section-3.3.2-4" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="polling-rate-limit">
+<section id="section-3.3.3">
+          <h4 id="name-polling-rate-limiting">
+<a href="#section-3.3.3" class="section-number selfRef">3.3.3. </a><a href="#name-polling-rate-limiting" class="section-name selfRef">Polling Rate Limiting</a>
+          </h4>
+<p id="section-3.3.3-1">When the authorization server requires the client to poll less frequently, it responds with an HTTP 429 (Too Many Requests) status code (<span>[<a href="#RFC6585" class="cite xref">RFC6585</a>]</span> Section 4) and a <code>Retry-After</code> header (<span>[<a href="#RFC9110" class="cite xref">RFC9110</a>]</span> Section 10.2.3) giving the minimum number of seconds the client <span class="bcp14">MUST</span> wait before its next poll. The client <span class="bcp14">MUST</span> increase its polling interval to at least the <code>Retry-After</code> value for this and all subsequent requests. A 429 response indicates that the registration remains pending; the client <span class="bcp14">SHOULD</span> continue polling. This response plays the role of the <code>slow_down</code> response of <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 3.5.<a href="#section-3.3.3-1" class="pilcrow">¶</a></p>
+<p id="section-3.3.3-2">The following is a non-normative example of a 429 (Too Many Requests) response:<a href="#section-3.3.3-2" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.3.3-3">
+<pre>
+HTTP/1.1 429 Too Many Requests
+Retry-After: 10
+Cache-Control: no-store
+</pre><a href="#section-3.3.3-3" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+<div id="polling-response-on-success">
+<section id="section-3.3.4">
+          <h4 id="name-polling-response-on-success">
+<a href="#section-3.3.4" class="section-number selfRef">3.3.4. </a><a href="#name-polling-response-on-success" class="section-name selfRef">Polling Response on Success</a>
+          </h4>
+<p id="section-3.3.4-1">Once the approving party has approved the registration, the next poll completes the registration. The authorization server responds with an HTTP 201 (Created) status code and a body identical in structure to the Client Information Response of <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3.2.1. Where the authorization server supports the registration management protocol of <span>[<a href="#RFC7592" class="cite xref">RFC7592</a>]</span>, the response additionally includes the <code>registration_access_token</code> and <code>registration_client_uri</code> fields defined in <span>[<a href="#RFC7592" class="cite xref">RFC7592</a>]</span> Section 3, as shown in the example below. The <code>registration_code</code> is consumed and <span class="bcp14">MUST NOT</span> be usable again.<a href="#section-3.3.4-1" class="pilcrow">¶</a></p>
+<p id="section-3.3.4-2">The following is a non-normative example response body:<a href="#section-3.3.4-2" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.3.4-3">
+<pre>
+HTTP/1.1 201 Created
+Content-Type: application/json
+Cache-Control: no-store
+
+{
+  "client_id": "ZmRkYTk0ZT",
+  "client_secret": "ZmRhOTk3Y2VjZjM0NDI1YTM1OTE1N2E4ZmQ5OWJiNDVhZmMxY2EyOAo",
+  "client_id_issued_at": 1779050000,
+  "client_secret_expires_at": 1810586000,
+  "registration_access_token": "reg-OGE4NGQwY2Q0YWJjOTY...",
+  "registration_client_uri":
+    "https://as.example.com/register/ZmRkYTk0ZT",
+  "client_name": "Example Client",
+  "redirect_uris": ["http://127.0.0.1:41337/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "token_endpoint_auth_method": "client_secret_basic",
+  "response_types": ["code"]
+}
+</pre><a href="#section-3.3.4-3" class="pilcrow">¶</a>
+</div>
+<p id="section-3.3.4-4">Subsequent management of the registered client, including retrieval, update, and deletion, is performed as defined in <span>[<a href="#RFC7592" class="cite xref">RFC7592</a>]</span> using the <code>registration_access_token</code> and <code>registration_client_uri</code> returned above.<a href="#section-3.3.4-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="errors">
+<section id="section-3.3.5">
+          <h4 id="name-polling-error-responses">
+<a href="#section-3.3.5" class="section-number selfRef">3.3.5. </a><a href="#name-polling-error-responses" class="section-name selfRef">Polling Error Responses</a>
+          </h4>
+<p id="section-3.3.5-1">When the registration cannot be completed, the authorization server returns an error response with an HTTP 400 (Bad Request) status code, a <code>Content-Type</code> of <code>application/json</code>, a <code>Cache-Control: no-store</code> response header, and a JSON object using the <code>error</code> and <span class="bcp14">OPTIONAL</span> <code>error_description</code> members of the error response defined in <span>[<a href="#RFC6749" class="cite xref">RFC6749</a>]</span> Section 5.2, as also used by the registration error response of <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3.2.2. A 400 (Bad Request) response is terminal: the client <span class="bcp14">MUST</span> stop polling.<a href="#section-3.3.5-1" class="pilcrow">¶</a></p>
+<p id="section-3.3.5-2">The error codes <code>access_denied</code> and <code>expired_token</code> are adopted from <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 3.5. The following error codes are defined for use when polling the registration endpoint under this specification:<a href="#section-3.3.5-2" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.3.5-3">
+            <dt id="section-3.3.5-3.1">access_denied:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.3.5-3.2">
+              <p id="section-3.3.5-3.2.1">The approving party denied the registration. The client <span class="bcp14">MUST</span> stop polling.<a href="#section-3.3.5-3.2.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.3.5-3.3">expired_token:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.3.5-3.4">
+              <p id="section-3.3.5-3.4.1">The <code>registration_code</code> has expired and the pending registration is no longer valid. The client <span class="bcp14">MUST</span> stop polling. The client <span class="bcp14">MAY</span> make a new registration request, but <span class="bcp14">SHOULD</span> wait for user interaction before doing so to avoid unnecessary polling.<a href="#section-3.3.5-3.4.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-3.3.5-3.5">invalid_registration:</dt>
+            <dd style="margin-left: 1.5em" id="section-3.3.5-3.6">
+              <p id="section-3.3.5-3.6.1">The pending registration cannot be completed. The <code>registration_code</code> is unknown to the authorization server or has already been consumed. These conditions are deliberately not distinguished, to avoid leaking pending-registration state to unauthenticated callers. The client <span class="bcp14">MUST</span> stop polling. The client <span class="bcp14">MAY</span> make a new registration request, but <span class="bcp14">SHOULD</span> do so only in response to user action to avoid unnecessary polling.<a href="#section-3.3.5-3.6.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+<p id="section-3.3.5-4">On encountering a connection timeout or other transient transport error, clients <span class="bcp14">MUST</span> reduce their polling frequency before retrying, following the same guidance as documented in <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 3.5. The use of an exponential backoff algorithm, such as doubling the polling interval on each connection timeout, is <span class="bcp14">RECOMMENDED</span>.<a href="#section-3.3.5-4" class="pilcrow">¶</a></p>
+<p id="section-3.3.5-5">The following is a non-normative example of an <code>invalid_registration</code> response:<a href="#section-3.3.5-5" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.3.5-6">
+<pre>
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+Cache-Control: no-store
+
+{
+  "error": "invalid_registration",
+  "error_description": "The pending registration cannot be completed."
+}
+</pre><a href="#section-3.3.5-6" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="cancellation">
+<section id="section-3.4">
+        <h3 id="name-cancellation">
+<a href="#section-3.4" class="section-number selfRef">3.4. </a><a href="#name-cancellation" class="section-name selfRef">Cancellation</a>
+        </h3>
+<p id="section-3.4-1">A client that has initiated a deferred registration <span class="bcp14">MAY</span> cancel it before it is approved, for example when the user abandons the client. The client sends an HTTP POST to the registration endpoint with a JSON body containing the <code>registration_code</code> and a <code>cancel_registration</code> member set to <code>true</code>.<a href="#section-3.4-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-3.4-2">
+          <dt id="section-3.4-2.1">cancel_registration:</dt>
+          <dd style="margin-left: 1.5em" id="section-3.4-2.2">
+            <p id="section-3.4-2.2.1"><span class="bcp14">REQUIRED</span> to request cancellation. Boolean. When <code>true</code>, the authorization server discards the pending registration identified by <code>registration_code</code>. A polling request omits this member (or sets it to <code>false</code>).<a href="#section-3.4-2.2.1" class="pilcrow">¶</a></p>
+</dd>
+        <dd class="break"></dd>
+</dl>
+<p id="section-3.4-3">Presenting the <code>registration_code</code> authorizes cancellation, just as it authorizes polling. On success, the authorization server discards the pending registration and responds with an HTTP 204 (No Content) status code. For a <code>registration_code</code> that is unknown or already consumed, including one consumed by a prior cancellation or completion, the authorization server responds with <code>invalid_registration</code> as defined in <a href="#errors" class="auto internal xref">Section 3.3.5</a> and does not disclose whether a matching pending registration exists.<a href="#section-3.4-3" class="pilcrow">¶</a></p>
+<p id="section-3.4-4">Cancellation by the client is distinct from denial by the approving party; either results in the pending registration no longer being completable.<a href="#section-3.4-4" class="pilcrow">¶</a></p>
+<p id="section-3.4-5">For example, the client cancels a pending registration:<a href="#section-3.4-5" class="pilcrow">¶</a></p>
+<div class="lang-http-message sourcecode" id="section-3.4-6">
+<pre>
+POST /register HTTP/1.1
+Host: as.example.com
+Content-Type: application/json
+
+{
+  "registration_code": "ZDY2NTFiYTg1N2I4NGFjYWY5N2ZmZGZhYmJiMTE0NjIyMTBjMzYyMwo",
+  "cancel_registration": true
+}
+</pre><a href="#section-3.4-6" class="pilcrow">¶</a>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="approval">
+<section id="section-4">
+      <h2 id="name-approval-interaction">
+<a href="#section-4" class="section-number selfRef">4. </a><a href="#name-approval-interaction" class="section-name selfRef">Approval Interaction</a>
+      </h2>
+<p id="section-4-1">The approving party interaction described in Section 3.3 of <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> is applicable to the approval interaction of this protocol. The approving party is presented with the <code>verification_uri</code> and <code>verification_code</code> and asked to access the URI in a user agent of their choosing, such as a web browser or a native application capable of handling the URI. This can be on the same device, or on a different device. The authorization server <span class="bcp14">MUST</span> authenticate the approving party and <span class="bcp14">MUST</span> use a secure TLS-protected session. The approving party <span class="bcp14">MUST</span> provide the <code>verification_code</code> before the process can continue. The authorization server <span class="bcp14">SHOULD</span> present the approving party with a clear description of the action the client is trying to complete and request their approval or denial. The authorization server <span class="bcp14">MUST</span> present the approving party with the effective client metadata to be registered.<a href="#section-4-1" class="pilcrow">¶</a></p>
+<p id="section-4-2">In case <code>verification_uri_complete</code> is provided, clients <span class="bcp14">MAY</span> present this in a non-textual manner, including using a QR (Quick Response) code or NFC (Near Field Communication). The client <span class="bcp14">SHOULD</span> present the <code>verification_uri</code> and <span class="bcp14">MUST</span> present the <code>verification_code</code>. The authorization server <span class="bcp14">SHOULD</span> display the <code>verification_code</code> so the approving party is able to verify with the displayed code from the client. This flow does not change the authentication and approval requirements, it provides an approving party an optimization to not enter the code manually.<a href="#section-4-2" class="pilcrow">¶</a></p>
+<p id="section-4-3">This specification does not specify the mechanism by which the authorization server authenticates the approving party or the user agent through which approval is performed. The mechanism, authentication strength, and any additional policy applied to the approving party are determined by authorization server policy.<a href="#section-4-3" class="pilcrow">¶</a></p>
+<div id="approver-association">
+<section id="section-4.1">
+        <h3 id="name-approver-association">
+<a href="#section-4.1" class="section-number selfRef">4.1. </a><a href="#name-approver-association" class="section-name selfRef">Approver Association</a>
+        </h3>
+<p id="section-4.1-1">A registration produced by this flow is associated with the specific authenticated approver who approved it. Authorization server implementations <span class="bcp14">SHOULD</span> retain this association so that the resulting client can later be managed or revoked through an approver-driven workflow. This specification does not define such a workflow; what is recorded, how the association is surfaced to the approver, and how revocation is exposed are determined by authorization server policy. Protocol-level management and revocation of a completed client registration remain as defined in <span>[<a href="#RFC7592" class="cite xref">RFC7592</a>]</span>, using the <code>registration_access_token</code> and <code>registration_client_uri</code> returned in the polling response.<a href="#section-4.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="discovery">
+<section id="section-5">
+      <h2 id="name-authorization-server-metada">
+<a href="#section-5" class="section-number selfRef">5. </a><a href="#name-authorization-server-metada" class="section-name selfRef">Authorization Server Metadata</a>
+      </h2>
+<p id="section-5-1">This extension defines the following addition to the OAuth 2.0 Authorization Server Metadata (<span>[<a href="#RFC8414" class="cite xref">RFC8414</a>]</span>) registry.<a href="#section-5-1" class="pilcrow">¶</a></p>
+<span class="break"></span><dl class="dlParallel" id="section-5-2">
+        <dt id="section-5-2.1">registration_modes_supported:</dt>
+        <dd style="margin-left: 1.5em" id="section-5-2.2">
+          <p id="section-5-2.2.1"><span class="bcp14">OPTIONAL</span>. JSON array listing the client registration modes supported at the authorization server's <code>registration_endpoint</code>. Values are registered in the "OAuth Client Registration Modes" registry established by this document (<a href="#modes-registry" class="auto internal xref">Section 8.3</a>). This document defines two values: <code>immediate</code>, indicating that a registration request may complete synchronously in the registration response as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>; and <code>approval</code>, indicating that the authorization server supports the deferred, approval-based flow defined in this specification. An authorization server supporting this specification <span class="bcp14">MUST</span> include <code>approval</code> in this array.<a href="#section-5-2.2.1" class="pilcrow">¶</a></p>
+</dd>
+      <dd class="break"></dd>
+</dl>
+<p id="section-5-3">A client discovers support for the approval-based flow by the presence of <code>approval</code> in <code>registration_modes_supported</code>. A client <span class="bcp14">MAY</span> also include <code>registration_mode</code> with the value <code>approval</code> in its registration request without prior discovery; if the authorization server does not support this extension it ignores the member and the registration is processed per <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>.<a href="#section-5-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="security">
+<section id="section-6">
+      <h2 id="name-security-considerations">
+<a href="#section-6" class="section-number selfRef">6. </a><a href="#name-security-considerations" class="section-name selfRef">Security Considerations</a>
+      </h2>
+<p id="section-6-1">The Security Considerations of <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 5 are applicable to this protocol, in particular the requirement that the registration endpoint be protected by a transport-layer security mechanism (<span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3 and Section 5, with <span>[<a href="#RFC9325" class="cite xref">RFC9325</a>]</span> for TLS configuration). Because this extension operates at the client registration endpoint, the general OAuth security recommendations of <span>[<a href="#RFC9700" class="cite xref">RFC9700</a>]</span> also apply.<a href="#section-6-1" class="pilcrow">¶</a></p>
+<div id="registration-endpoint-abuse">
+<section id="section-6.1">
+        <h3 id="name-registration-endpoint-abuse">
+<a href="#section-6.1" class="section-number selfRef">6.1. </a><a href="#name-registration-endpoint-abuse" class="section-name selfRef">Registration Endpoint Abuse</a>
+        </h3>
+<p id="section-6.1-1">The approval-based flow can be initiated without authentication. An attacker can submit a high volume of registration requests to exhaust the authorization server's pending-registration state or to mint many verification codes in the hope of a social engineering attack. The authorization server <span class="bcp14">SHOULD</span> apply rate-limiting to the registration endpoint.<a href="#section-6.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="verification-code-phishing">
+<section id="section-6.2">
+        <h3 id="name-verification-code-phishing">
+<a href="#section-6.2" class="section-number selfRef">6.2. </a><a href="#name-verification-code-phishing" class="section-name selfRef">Verification Code Phishing</a>
+        </h3>
+<p id="section-6.2-1">An attacker can initiate a registration, obtain a verification code, and trick a victim into approving the attacker's registration under the victim's account. The attacker's client then receives client credentials associated with the victim's approval at the authorization server.<a href="#section-6.2-1" class="pilcrow">¶</a></p>
+<p id="section-6.2-2">This is the registration equivalent of the device phishing attack in <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 5.4 and is not eliminated by this extension. To mitigate the risk, authorization servers <span class="bcp14">MUST</span> inform the approving party that they are registering a new client, including the client name, timestamp, and registration details. When the <code>verification_uri_complete</code> optimization is used, the authorization server <span class="bcp14">MUST</span> display the verification code for the approving party to verify the same code is shown by the client.<a href="#section-6.2-2" class="pilcrow">¶</a></p>
+<p id="section-6.2-3">The verification code <span class="bcp14">SHOULD</span> have a short lifetime and <span class="bcp14">SHOULD</span> be single-use to make it harder for an attacker to phish targets.<a href="#section-6.2-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="verification-code-brute-forcing">
+<section id="section-6.3">
+        <h3 id="name-verification-code-brute-for">
+<a href="#section-6.3" class="section-number selfRef">6.3. </a><a href="#name-verification-code-brute-for" class="section-name selfRef">Verification Code Brute Forcing</a>
+        </h3>
+<p id="section-6.3-1">The verification code is short to allow human transcription. An attacker who can submit many verification codes against the verification URI could locate a pending registration not their own and attempt to trick another approving party into approving it. The authorization server <span class="bcp14">MUST</span> rate-limit verification code submission per source IP and per authenticated approver, <span class="bcp14">MUST</span> reject expired or already-consumed verification codes, and <span class="bcp14">MUST</span> require an explicit approval action (not auto-confirm on code entry). Guidance in <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 5.1 applies directly.<a href="#section-6.3-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="registration-code-compromise">
+<section id="section-6.4">
+        <h3 id="name-registration-code-compromis">
+<a href="#section-6.4" class="section-number selfRef">6.4. </a><a href="#name-registration-code-compromis" class="section-name selfRef">Registration Code Compromise</a>
+        </h3>
+<p id="section-6.4-1">The <code>registration_code</code> is a bearer credential: any party that possesses it can poll for and complete, or cancel, the pending registration it identifies. Unlike the <code>device_code</code> of <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span>, which the client presents together with its <code>client_id</code> and, where applicable, client authentication, the <code>registration_code</code> is presented on its own, because the client is not yet registered and has no credentials; the <code>registration_code</code> is therefore the sole protection for the pending registration. An attacker who guesses, intercepts, or otherwise obtains a <code>registration_code</code> (for example through a TLS-terminating intermediary, a server log, or a brute-force attempt) can therefore complete the registration in place of the legitimate client, receiving the issued <code>client_id</code> and, where applicable, <code>client_secret</code>. Protection of the <code>registration_code</code> is essential.<a href="#section-6.4-1" class="pilcrow">¶</a></p>
+<p id="section-6.4-2">Accordingly, the authorization server <span class="bcp14">MUST</span> protect the registration endpoint with a transport-layer security mechanism (<span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 3, with <span>[<a href="#RFC9325" class="cite xref">RFC9325</a>]</span> for TLS configuration). The <code>registration_code</code> <span class="bcp14">MUST</span> contain at least 128 bits of entropy (160 bits <span class="bcp14">RECOMMENDED</span>), drawn from a cryptographically secure random source per <span>[<a href="#RFC6749" class="cite xref">RFC6749</a>]</span> Section 10.10, and <span class="bcp14">MUST NOT</span> be guessable. It <span class="bcp14">SHOULD</span> have a short lifetime, bounded by the <code>expires_in</code> returned in the deferred registration response, and <span class="bcp14">MUST</span> be single-use, becoming unusable once the registration is completed, denied, cancelled, or expired. The authorization server <span class="bcp14">SHOULD</span> store the <code>registration_code</code> in hashed form, so that read access to its pending-registration store does not yield a usable code, and <span class="bcp14">SHOULD</span> apply the brute-force mitigations recommended in <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 5.2 to polling requests.<a href="#section-6.4-2" class="pilcrow">¶</a></p>
+<p id="section-6.4-3">Authorization servers <span class="bcp14">MUST NOT</span> treat possession of a <code>registration_code</code> as an authorization grant. It authorizes nothing beyond completing or cancelling the single pending registration it identifies.<a href="#section-6.4-3" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="registration-cancellation">
+<section id="section-6.5">
+        <h3 id="name-registration-cancellation">
+<a href="#section-6.5" class="section-number selfRef">6.5. </a><a href="#name-registration-cancellation" class="section-name selfRef">Registration Cancellation</a>
+        </h3>
+<p id="section-6.5-1">Cancellation of a pending registration (<a href="#cancellation" class="auto internal xref">Section 3.4</a>) is authorized by presenting the <code>registration_code</code>, exactly as polling is. It therefore inherits the same protection requirements as the <code>registration_code</code> itself (<a href="#registration-code-compromise" class="auto internal xref">Section 6.4</a>). A cancellation request only discards pending registration state; it returns no credentials and discloses no information about whether a matching pending registration existed, returning <code>invalid_registration</code> for an unknown or already-consumed code exactly as a poll does.<a href="#section-6.5-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="privacy-considerations">
+<section id="section-7">
+      <h2 id="name-privacy-considerations">
+<a href="#section-7" class="section-number selfRef">7. </a><a href="#name-privacy-considerations" class="section-name selfRef">Privacy Considerations</a>
+      </h2>
+<p id="section-7-1">The privacy considerations of <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span> Section 6 apply to client metadata exchanged through this protocol. In addition, the verification URI approval interaction surfaces client metadata to the approving party, and client authors <span class="bcp14">SHOULD</span> assume all metadata in the registration request may be visible to the approving party and to the authorization server operator.<a href="#section-7-1" class="pilcrow">¶</a></p>
+<div id="approver-identity-linkability">
+<section id="section-7.1">
+        <h3 id="name-approver-identity-linkabili">
+<a href="#section-7.1" class="section-number selfRef">7.1. </a><a href="#name-approver-identity-linkabili" class="section-name selfRef">Approver Identity Linkability</a>
+        </h3>
+<p id="section-7.1-1">The authorization server learns, for every approved registration, which approver authenticated to approve it. Authorization server operators are therefore able to link a given approver to the set of clients that approver has registered. This linkage may be retained for audit, revocation, and management purposes (see <a href="#approver-association" class="auto internal xref">Section 4.1</a>). Authorization servers <span class="bcp14">SHOULD</span> apply the same retention and access-control policies to this linkage as they do to other authorization decisions made by the same approver.<a href="#section-7.1-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="denied-and-expired-registrations">
+<section id="section-7.2">
+        <h3 id="name-denied-and-expired-registra">
+<a href="#section-7.2" class="section-number selfRef">7.2. </a><a href="#name-denied-and-expired-registra" class="section-name selfRef">Denied and Expired Registrations</a>
+        </h3>
+<p id="section-7.2-1">Authorization servers <span class="bcp14">MAY</span> retain records of denied or expired registration requests for security monitoring (for example, to detect repeated phishing attempts as in <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> Section 5.4). Such records may include the submitted client metadata, the approver who denied the request, and metadata about the approval session. Authorization servers <span class="bcp14">SHOULD</span> bound the retention of these records and <span class="bcp14">SHOULD NOT</span> use them for purposes beyond security operations.<a href="#section-7.2-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="verification-uri-access-logs">
+<section id="section-7.3">
+        <h3 id="name-verification-uri-access-log">
+<a href="#section-7.3" class="section-number selfRef">7.3. </a><a href="#name-verification-uri-access-log" class="section-name selfRef">Verification URI Access Logs</a>
+        </h3>
+<p id="section-7.3-1">Access to the verification URI typically generates server-side logs containing the approver's IP address, user-agent, authentication context, and timestamp. These logs may be more sensitive than logs for ordinary authorization endpoints because they tie a specific human approver to a specific newly registered client. Authorization server operators <span class="bcp14">SHOULD</span> treat these logs accordingly.<a href="#section-7.3-1" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="iana-considerations">
+<section id="section-8">
+      <h2 id="name-iana-considerations">
+<a href="#section-8" class="section-number selfRef">8. </a><a href="#name-iana-considerations" class="section-name selfRef">IANA Considerations</a>
+      </h2>
+<div id="oauth-authorization-server-metadata">
+<section id="section-8.1">
+        <h3 id="name-oauth-authorization-server-">
+<a href="#section-8.1" class="section-number selfRef">8.1. </a><a href="#name-oauth-authorization-server-" class="section-name selfRef">OAuth Authorization Server Metadata</a>
+        </h3>
+<p id="section-8.1-1">IANA is requested to register the following entries in the "OAuth Authorization Server Metadata" registry established by <span>[<a href="#RFC8414" class="cite xref">RFC8414</a>]</span>.<a href="#section-8.1-1" class="pilcrow">¶</a></p>
+<div id="registration-modes-supported">
+<section id="section-8.1.1">
+          <h4 id="name-registration-modes-supporte">
+<a href="#section-8.1.1" class="section-number selfRef">8.1.1. </a><a href="#name-registration-modes-supporte" class="section-name selfRef">Registration Modes Supported</a>
+          </h4>
+<span class="break"></span><dl class="dlParallel" id="section-8.1.1-1">
+            <dt id="section-8.1.1-1.1">Metadata Name:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.1.1-1.2">
+              <p id="section-8.1.1-1.2.1">registration_modes_supported<a href="#section-8.1.1-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.1.1-1.3">Metadata Description:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.1.1-1.4">
+              <p id="section-8.1.1-1.4.1">JSON array containing a list of the client registration modes supported at the authorization server's registration endpoint.<a href="#section-8.1.1-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.1.1-1.5">Change Controller:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.1.1-1.6">
+              <p id="section-8.1.1-1.6.1">IESG<a href="#section-8.1.1-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.1.1-1.7">Specification Document(s):</dt>
+            <dd style="margin-left: 1.5em" id="section-8.1.1-1.8">
+              <p id="section-8.1.1-1.8.1">This document<a href="#section-8.1.1-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+</section>
+</div>
+</section>
+</div>
+<div id="oauth-dynamic-client-registration-metadata">
+<section id="section-8.2">
+        <h3 id="name-oauth-dynamic-client-regist">
+<a href="#section-8.2" class="section-number selfRef">8.2. </a><a href="#name-oauth-dynamic-client-regist" class="section-name selfRef">OAuth Dynamic Client Registration Metadata</a>
+        </h3>
+<p id="section-8.2-1">IANA is requested to register the following entry in the "OAuth Dynamic Client Registration Metadata" registry established by <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>.<a href="#section-8.2-1" class="pilcrow">¶</a></p>
+<div id="registration-mode">
+<section id="section-8.2.1">
+          <h4 id="name-registration-mode">
+<a href="#section-8.2.1" class="section-number selfRef">8.2.1. </a><a href="#name-registration-mode" class="section-name selfRef">Registration Mode</a>
+          </h4>
+<span class="break"></span><dl class="dlParallel" id="section-8.2.1-1">
+            <dt id="section-8.2.1-1.1">Client Metadata Name:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.2.1-1.2">
+              <p id="section-8.2.1-1.2.1">registration_mode<a href="#section-8.2.1-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.2.1-1.3">Client Metadata Description:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.2.1-1.4">
+              <p id="section-8.2.1-1.4.1">A JSON array of client registration mode values the client is willing to accept for this registration request.<a href="#section-8.2.1-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.2.1-1.5">Change Controller:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.2.1-1.6">
+              <p id="section-8.2.1-1.6.1">IESG<a href="#section-8.2.1-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.2.1-1.7">Specification Document(s):</dt>
+            <dd style="margin-left: 1.5em" id="section-8.2.1-1.8">
+              <p id="section-8.2.1-1.8.1">This document<a href="#section-8.2.1-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+<p id="section-8.2.1-2">The <code>registration_code</code>, <code>verification_code</code>, and <code>cancel_registration</code> members defined by this document are exchanged only within the flow defined here and are not registered as OAuth parameters, following the approach taken for the <code>user_code</code> and <code>verification_uri</code> fields of <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span>.<a href="#section-8.2.1-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+<div id="modes-registry">
+<section id="section-8.3">
+        <h3 id="name-oauth-client-registration-m">
+<a href="#section-8.3" class="section-number selfRef">8.3. </a><a href="#name-oauth-client-registration-m" class="section-name selfRef">OAuth Client Registration Modes</a>
+        </h3>
+<p id="section-8.3-1">This document establishes the IANA "OAuth Client Registration Modes" registry. Client registration mode values, used in the <code>registration_modes_supported</code> authorization server metadata field, are registered with a Specification Required (<span>[<a href="#RFC8126" class="cite xref">RFC8126</a>]</span>) after a two-week review period on the oauth-ext-review@ietf.org mailing list, on the advice of one or more Designated Experts. However, to allow for the allocation of values prior to publication, the Designated Experts may approve registration once they are satisfied that such a specification will be published, per <span>[<a href="#RFC7120" class="cite xref">RFC7120</a>]</span>.<a href="#section-8.3-1" class="pilcrow">¶</a></p>
+<p id="section-8.3-2">Registration requests sent to the mailing list for review should use an appropriate subject (e.g., "Request to register client registration mode: example").<a href="#section-8.3-2" class="pilcrow">¶</a></p>
+<p id="section-8.3-3">Within the review period, the Designated Experts will either approve or deny the registration request, communicating this decision to the review list and IANA. Denials should include an explanation and, if applicable, suggestions as to how to make the request successful.<a href="#section-8.3-3" class="pilcrow">¶</a></p>
+<p id="section-8.3-4">IANA must only accept registry updates from the Designated Experts and should direct all requests for registration to the review mailing list.<a href="#section-8.3-4" class="pilcrow">¶</a></p>
+<div id="registration-template">
+<section id="section-8.3.1">
+          <h4 id="name-registration-template">
+<a href="#section-8.3.1" class="section-number selfRef">8.3.1. </a><a href="#name-registration-template" class="section-name selfRef">Registration Template</a>
+          </h4>
+<span class="break"></span><dl class="dlParallel" id="section-8.3.1-1">
+            <dt id="section-8.3.1-1.1">Registration Mode Name:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.3.1-1.2">
+              <p id="section-8.3.1-1.2.1">The name requested (e.g., <code>approval</code>). This name is case sensitive. Names that match other registered names in a case-insensitive manner <span class="bcp14">SHOULD NOT</span> be accepted.<a href="#section-8.3.1-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.3.1-1.3">Registration Mode Description:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.3.1-1.4">
+              <p id="section-8.3.1-1.4.1">Brief description of the registration mode's behavior, including how and when the registration outcome is returned.<a href="#section-8.3.1-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.3.1-1.5">Change Controller:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.3.1-1.6">
+              <p id="section-8.3.1-1.6.1">For Standards Track RFCs, list "IESG". For others, give the name of the responsible party.<a href="#section-8.3.1-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.3.1-1.7">Specification Document(s):</dt>
+            <dd style="margin-left: 1.5em" id="section-8.3.1-1.8">
+              <p id="section-8.3.1-1.8.1">Reference to the document or documents that specify the registration mode, preferably including a URI that can be used to retrieve a copy.<a href="#section-8.3.1-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="initial-registry-contents">
+<section id="section-8.3.2">
+          <h4 id="name-initial-registry-contents">
+<a href="#section-8.3.2" class="section-number selfRef">8.3.2. </a><a href="#name-initial-registry-contents" class="section-name selfRef">Initial Registry Contents</a>
+          </h4>
+<div id="mode-immediate">
+<section id="section-8.3.2.1">
+            <h5 id="name-immediate">
+<a href="#section-8.3.2.1" class="section-number selfRef">8.3.2.1. </a><a href="#name-immediate" class="section-name selfRef">Immediate</a>
+            </h5>
+<span class="break"></span><dl class="dlParallel" id="section-8.3.2.1-1">
+              <dt id="section-8.3.2.1-1.1">Registration Mode Name:</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.1-1.2">
+                <p id="section-8.3.2.1-1.2.1">immediate<a href="#section-8.3.2.1-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+              <dd class="break"></dd>
+<dt id="section-8.3.2.1-1.3">Registration Mode Description:</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.1-1.4">
+                <p id="section-8.3.2.1-1.4.1">The registration request may complete synchronously, with the Client Information Response returned directly in the registration response as defined in <span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>.<a href="#section-8.3.2.1-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+              <dd class="break"></dd>
+<dt id="section-8.3.2.1-1.5">Change Controller:</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.1-1.6">
+                <p id="section-8.3.2.1-1.6.1">IESG<a href="#section-8.3.2.1-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+              <dd class="break"></dd>
+<dt id="section-8.3.2.1-1.7">Specification Document(s):</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.1-1.8">
+                <p id="section-8.3.2.1-1.8.1">This document<a href="#section-8.3.2.1-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="mode-approval">
+<section id="section-8.3.2.2">
+            <h5 id="name-approval">
+<a href="#section-8.3.2.2" class="section-number selfRef">8.3.2.2. </a><a href="#name-approval" class="section-name selfRef">Approval</a>
+            </h5>
+<span class="break"></span><dl class="dlParallel" id="section-8.3.2.2-1">
+              <dt id="section-8.3.2.2-1.1">Registration Mode Name:</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.2-1.2">
+                <p id="section-8.3.2.2-1.2.1">approval<a href="#section-8.3.2.2-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+              <dd class="break"></dd>
+<dt id="section-8.3.2.2-1.3">Registration Mode Description:</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.2-1.4">
+                <p id="section-8.3.2.2-1.4.1">The authorization server may defer the registration for approval by an approving party, returning a 202 (Accepted) response that the client polls to obtain the outcome, as defined in this document.<a href="#section-8.3.2.2-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+              <dd class="break"></dd>
+<dt id="section-8.3.2.2-1.5">Change Controller:</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.2-1.6">
+                <p id="section-8.3.2.2-1.6.1">IESG<a href="#section-8.3.2.2-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+              <dd class="break"></dd>
+<dt id="section-8.3.2.2-1.7">Specification Document(s):</dt>
+              <dd style="margin-left: 1.5em" id="section-8.3.2.2-1.8">
+                <p id="section-8.3.2.2-1.8.1">This document<a href="#section-8.3.2.2-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+</dl>
+</section>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="oauth-extensions-error-registry">
+<section id="section-8.4">
+        <h3 id="name-oauth-extensions-error-regi">
+<a href="#section-8.4" class="section-number selfRef">8.4. </a><a href="#name-oauth-extensions-error-regi" class="section-name selfRef">OAuth Extensions Error Registry</a>
+        </h3>
+<p id="section-8.4-1">IANA is requested to register the following entries in the "OAuth Extensions Error Registry" established by <span>[<a href="#RFC6749" class="cite xref">RFC6749</a>]</span>.<a href="#section-8.4-1" class="pilcrow">¶</a></p>
+<div id="invalid-registration">
+<section id="section-8.4.1">
+          <h4 id="name-invalid-registration">
+<a href="#section-8.4.1" class="section-number selfRef">8.4.1. </a><a href="#name-invalid-registration" class="section-name selfRef">Invalid Registration</a>
+          </h4>
+<span class="break"></span><dl class="dlParallel" id="section-8.4.1-1">
+            <dt id="section-8.4.1-1.1">Name:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.4.1-1.2">
+              <p id="section-8.4.1-1.2.1">invalid_registration<a href="#section-8.4.1-1.2.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.4.1-1.3">Usage Location:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.4.1-1.4">
+              <p id="section-8.4.1-1.4.1">client registration polling response, client registration cancellation response<a href="#section-8.4.1-1.4.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.4.1-1.5">Protocol Extension:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.4.1-1.6">
+              <p id="section-8.4.1-1.6.1">OAuth 2.0 Approval-Based Dynamic Client Registration<a href="#section-8.4.1-1.6.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.4.1-1.7">Change Controller:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.4.1-1.8">
+              <p id="section-8.4.1-1.8.1">IESG<a href="#section-8.4.1-1.8.1" class="pilcrow">¶</a></p>
+</dd>
+            <dd class="break"></dd>
+<dt id="section-8.4.1-1.9">Reference:</dt>
+            <dd style="margin-left: 1.5em" id="section-8.4.1-1.10">
+              <p id="section-8.4.1-1.10.1">This document<a href="#section-8.4.1-1.10.1" class="pilcrow">¶</a></p>
+</dd>
+          <dd class="break"></dd>
+</dl>
+<p id="section-8.4.1-2">The <code>access_denied</code> and <code>expired_token</code> error codes used when polling are defined by <span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span> and are not re-registered by this document.<a href="#section-8.4.1-2" class="pilcrow">¶</a></p>
+</section>
+</div>
+</section>
+</div>
+</section>
+</div>
+<div id="sec-combined-references">
+<section id="section-9">
+      <h2 id="name-references">
+<a href="#section-9" class="section-number selfRef">9. </a><a href="#name-references" class="section-name selfRef">References</a>
+      </h2>
+<div id="sec-normative-references">
+<section id="section-9.1">
+        <h3 id="name-normative-references">
+<a href="#section-9.1" class="section-number selfRef">9.1. </a><a href="#name-normative-references" class="section-name selfRef">Normative References</a>
+        </h3>
+<dl class="references">
+<dt id="RFC2119">[RFC2119]</dt>
+        <dd>
+<span class="refAuthor">Bradner, S.</span>, <span class="refTitle">"Key words for use in RFCs to Indicate Requirement Levels"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 2119</span>, <span class="seriesInfo">DOI 10.17487/RFC2119</span>, <time datetime="1997-03" class="refDate">March 1997</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc2119">https://www.rfc-editor.org/rfc/rfc2119</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC6585">[RFC6585]</dt>
+        <dd>
+<span class="refAuthor">Nottingham, M.</span> and <span class="refAuthor">R. Fielding</span>, <span class="refTitle">"Additional HTTP Status Codes"</span>, <span class="seriesInfo">RFC 6585</span>, <span class="seriesInfo">DOI 10.17487/RFC6585</span>, <time datetime="2012-04" class="refDate">April 2012</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc6585">https://www.rfc-editor.org/rfc/rfc6585</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC6749">[RFC6749]</dt>
+        <dd>
+<span class="refAuthor">Hardt, D., Ed.</span>, <span class="refTitle">"The OAuth 2.0 Authorization Framework"</span>, <span class="seriesInfo">RFC 6749</span>, <span class="seriesInfo">DOI 10.17487/RFC6749</span>, <time datetime="2012-10" class="refDate">October 2012</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc6749">https://www.rfc-editor.org/rfc/rfc6749</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC7120">[RFC7120]</dt>
+        <dd>
+<span class="refAuthor">Cotton, M.</span>, <span class="refTitle">"Early IANA Allocation of Standards Track Code Points"</span>, <span class="seriesInfo">BCP 100</span>, <span class="seriesInfo">RFC 7120</span>, <span class="seriesInfo">DOI 10.17487/RFC7120</span>, <time datetime="2014-01" class="refDate">January 2014</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc7120">https://www.rfc-editor.org/rfc/rfc7120</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC7591">[RFC7591]</dt>
+        <dd>
+<span class="refAuthor">Richer, J., Ed.</span>, <span class="refAuthor">Jones, M.</span>, <span class="refAuthor">Bradley, J.</span>, <span class="refAuthor">Machulak, M.</span>, and <span class="refAuthor">P. Hunt</span>, <span class="refTitle">"OAuth 2.0 Dynamic Client Registration Protocol"</span>, <span class="seriesInfo">RFC 7591</span>, <span class="seriesInfo">DOI 10.17487/RFC7591</span>, <time datetime="2015-07" class="refDate">July 2015</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc7591">https://www.rfc-editor.org/rfc/rfc7591</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC7592">[RFC7592]</dt>
+        <dd>
+<span class="refAuthor">Richer, J., Ed.</span>, <span class="refAuthor">Jones, M.</span>, <span class="refAuthor">Bradley, J.</span>, and <span class="refAuthor">M. Machulak</span>, <span class="refTitle">"OAuth 2.0 Dynamic Client Registration Management Protocol"</span>, <span class="seriesInfo">RFC 7592</span>, <span class="seriesInfo">DOI 10.17487/RFC7592</span>, <time datetime="2015-07" class="refDate">July 2015</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc7592">https://www.rfc-editor.org/rfc/rfc7592</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8126">[RFC8126]</dt>
+        <dd>
+<span class="refAuthor">Cotton, M.</span>, <span class="refAuthor">Leiba, B.</span>, and <span class="refAuthor">T. Narten</span>, <span class="refTitle">"Guidelines for Writing an IANA Considerations Section in RFCs"</span>, <span class="seriesInfo">BCP 26</span>, <span class="seriesInfo">RFC 8126</span>, <span class="seriesInfo">DOI 10.17487/RFC8126</span>, <time datetime="2017-06" class="refDate">June 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8126">https://www.rfc-editor.org/rfc/rfc8126</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8174">[RFC8174]</dt>
+        <dd>
+<span class="refAuthor">Leiba, B.</span>, <span class="refTitle">"Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words"</span>, <span class="seriesInfo">BCP 14</span>, <span class="seriesInfo">RFC 8174</span>, <span class="seriesInfo">DOI 10.17487/RFC8174</span>, <time datetime="2017-05" class="refDate">May 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8174">https://www.rfc-editor.org/rfc/rfc8174</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8259">[RFC8259]</dt>
+        <dd>
+<span class="refAuthor">Bray, T., Ed.</span>, <span class="refTitle">"The JavaScript Object Notation (JSON) Data Interchange Format"</span>, <span class="seriesInfo">STD 90</span>, <span class="seriesInfo">RFC 8259</span>, <span class="seriesInfo">DOI 10.17487/RFC8259</span>, <time datetime="2017-12" class="refDate">December 2017</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8259">https://www.rfc-editor.org/rfc/rfc8259</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8414">[RFC8414]</dt>
+        <dd>
+<span class="refAuthor">Jones, M.</span>, <span class="refAuthor">Sakimura, N.</span>, and <span class="refAuthor">J. Bradley</span>, <span class="refTitle">"OAuth 2.0 Authorization Server Metadata"</span>, <span class="seriesInfo">RFC 8414</span>, <span class="seriesInfo">DOI 10.17487/RFC8414</span>, <time datetime="2018-06" class="refDate">June 2018</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8414">https://www.rfc-editor.org/rfc/rfc8414</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC8628">[RFC8628]</dt>
+        <dd>
+<span class="refAuthor">Denniss, W.</span>, <span class="refAuthor">Bradley, J.</span>, <span class="refAuthor">Jones, M.</span>, and <span class="refAuthor">H. Tschofenig</span>, <span class="refTitle">"OAuth 2.0 Device Authorization Grant"</span>, <span class="seriesInfo">RFC 8628</span>, <span class="seriesInfo">DOI 10.17487/RFC8628</span>, <time datetime="2019-08" class="refDate">August 2019</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc8628">https://www.rfc-editor.org/rfc/rfc8628</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9110">[RFC9110]</dt>
+        <dd>
+<span class="refAuthor">Fielding, R., Ed.</span>, <span class="refAuthor">Nottingham, M., Ed.</span>, and <span class="refAuthor">J. Reschke, Ed.</span>, <span class="refTitle">"HTTP Semantics"</span>, <span class="seriesInfo">STD 97</span>, <span class="seriesInfo">RFC 9110</span>, <span class="seriesInfo">DOI 10.17487/RFC9110</span>, <time datetime="2022-06" class="refDate">June 2022</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9110">https://www.rfc-editor.org/rfc/rfc9110</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9325">[RFC9325]</dt>
+        <dd>
+<span class="refAuthor">Sheffer, Y.</span>, <span class="refAuthor">Saint-Andre, P.</span>, and <span class="refAuthor">T. Fossati</span>, <span class="refTitle">"Recommendations for Secure Use of Transport Layer Security (TLS) and Datagram Transport Layer Security (DTLS)"</span>, <span class="seriesInfo">BCP 195</span>, <span class="seriesInfo">RFC 9325</span>, <span class="seriesInfo">DOI 10.17487/RFC9325</span>, <time datetime="2022-11" class="refDate">November 2022</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9325">https://www.rfc-editor.org/rfc/rfc9325</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="RFC9700">[RFC9700]</dt>
+      <dd>
+<span class="refAuthor">Lodderstedt, T.</span>, <span class="refAuthor">Bradley, J.</span>, <span class="refAuthor">Labunets, A.</span>, and <span class="refAuthor">D. Fett</span>, <span class="refTitle">"Best Current Practice for OAuth 2.0 Security"</span>, <span class="seriesInfo">BCP 240</span>, <span class="seriesInfo">RFC 9700</span>, <span class="seriesInfo">DOI 10.17487/RFC9700</span>, <time datetime="2025-01" class="refDate">January 2025</time>, <span>&lt;<a href="https://www.rfc-editor.org/rfc/rfc9700">https://www.rfc-editor.org/rfc/rfc9700</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</div>
+<div id="sec-informative-references">
+<section id="section-9.2">
+        <h3 id="name-informative-references">
+<a href="#section-9.2" class="section-number selfRef">9.2. </a><a href="#name-informative-references" class="section-name selfRef">Informative References</a>
+        </h3>
+<dl class="references">
+<dt id="I-D.gerber-oauth-deferred-token-response">[I-D.gerber-oauth-deferred-token-response]</dt>
+        <dd>
+<span class="refAuthor">Jacobsen, F. K.</span>, <span class="refAuthor">de Oliveira Niero, G.</span>, and <span class="refAuthor">M. Gerber</span>, <span class="refTitle">"Deferred Token Response"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-gerber-oauth-deferred-token-response-00</span>, <time datetime="2026-06-23" class="refDate">23 June 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-gerber-oauth-deferred-token-response-00">https://datatracker.ietf.org/doc/html/draft-gerber-oauth-deferred-token-response-00</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+<dt id="I-D.ietf-oauth-client-id-metadata-document">[I-D.ietf-oauth-client-id-metadata-document]</dt>
+      <dd>
+<span class="refAuthor">Parecki, A.</span> and <span class="refAuthor">E. Smith</span>, <span class="refTitle">"OAuth Client ID Metadata Document"</span>, <span class="refContent">Work in Progress</span>, <span class="seriesInfo">Internet-Draft, draft-ietf-oauth-client-id-metadata-document-02</span>, <time datetime="2026-07-06" class="refDate">6 July 2026</time>, <span>&lt;<a href="https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-02">https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-02</a>&gt;</span>. </dd>
+<dd class="break"></dd>
+</dl>
+</section>
+</div>
+</section>
+</div>
+<div id="use-cases">
+<section id="appendix-A">
+      <h2 id="name-example-use-cases">
+<a href="#name-example-use-cases" class="section-name selfRef">Example Use Cases</a>
+      </h2>
+<div id="minimal-registration-with-human-user-approval">
+<section id="appendix-A.1">
+        <h3 id="name-minimal-registration-with-h">
+<a href="#name-minimal-registration-with-h" class="section-name selfRef">Minimal Registration with Human User Approval</a>
+        </h3>
+<p id="appendix-A.1-1">A client registers itself against an authorization server. The approving party is a human user who visits the verification URI in a browser tab already authenticated to the authorization server.<a href="#appendix-A.1-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="appendix-A.1-2">
+<li id="appendix-A.1-2.1">
+            <p id="appendix-A.1-2.1.1">The client POSTs its metadata to the registration endpoint with <code>registration_mode: ["approval"]</code>.<a href="#appendix-A.1-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.1-2.2">
+            <p id="appendix-A.1-2.2.1">Because approval is required, the authorization server returns a 202 (Accepted) response with a <code>registration_code</code>, <code>verification_code</code>, and <code>verification_uri</code>.<a href="#appendix-A.1-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.1-2.3">
+            <p id="appendix-A.1-2.3.1">The client displays: "Visit https://as.example.com/register-verification and enter code FBWS-TRGI".<a href="#appendix-A.1-2.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.1-2.4">
+            <p id="appendix-A.1-2.4.1">The user visits the URI, enters the code, sees "Example Client wants to register. Approve?", and clicks Approve.<a href="#appendix-A.1-2.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.1-2.5">
+            <p id="appendix-A.1-2.5.1">The client's next poll to the registration endpoint returns <code>client_id</code> and <code>client_secret</code>.<a href="#appendix-A.1-2.5.1" class="pilcrow">¶</a></p>
+</li>
+        </ol>
+</section>
+</div>
+<div id="registration-producing-a-url-client-identifier">
+<section id="appendix-A.2">
+        <h3 id="name-registration-producing-a-ur">
+<a href="#name-registration-producing-a-ur" class="section-name selfRef">Registration Producing a URL Client Identifier</a>
+        </h3>
+<p id="appendix-A.2-1">A client registers against an authorization server whose policy issues an HTTPS URL as the <code>client_id</code>, which the authorization server later resolves as a client identifier metadata document (<span>[<a href="#I-D.ietf-oauth-client-id-metadata-document" class="cite xref">I-D.ietf-oauth-client-id-metadata-document</a>]</span>). The approval-based flow is unchanged; only the form of the issued <code>client_id</code> differs.<a href="#appendix-A.2-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="appendix-A.2-2">
+<li id="appendix-A.2-2.1">
+            <p id="appendix-A.2-2.1.1">The client POSTs its metadata to the registration endpoint with <code>registration_mode: ["approval"]</code>.<a href="#appendix-A.2-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.2-2.2">
+            <p id="appendix-A.2-2.2.1">The authorization server returns a 202 (Accepted) response with a <code>registration_code</code> and verification data. The client encodes <code>verification_uri_complete</code> as a QR code.<a href="#appendix-A.2-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.2-2.3">
+            <p id="appendix-A.2-2.3.1">The approving party scans the QR code, authenticates, reviews the client metadata, and approves.<a href="#appendix-A.2-2.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.2-2.4">
+            <p id="appendix-A.2-2.4.1">The client's next poll returns a Client Information Response whose <code>client_id</code> is an HTTPS URL.<a href="#appendix-A.2-2.4.1" class="pilcrow">¶</a></p>
+</li>
+        </ol>
+</section>
+</div>
+<div id="high-assurance-approval-via-a-native-application">
+<section id="appendix-A.3">
+        <h3 id="name-high-assurance-approval-via">
+<a href="#name-high-assurance-approval-via" class="section-name selfRef">High-Assurance Approval via a Native Application</a>
+        </h3>
+<p id="appendix-A.3-1">A command-line client on a shared workstation registers against an authorization server whose policy requires a high level of assurance for the approving party. Approval is completed in the authorization server operator's own mobile application rather than a web browser, allowing the operator to combine account authentication, application attestation, and a biometric check in the approval step.<a href="#appendix-A.3-1" class="pilcrow">¶</a></p>
+<ol start="1" type="1" class="normal type-1" id="appendix-A.3-2">
+<li id="appendix-A.3-2.1">
+            <p id="appendix-A.3-2.1.1">The client POSTs its metadata to the registration endpoint with <code>registration_mode: ["approval"]</code>.<a href="#appendix-A.3-2.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.3-2.2">
+            <p id="appendix-A.3-2.2.1">The authorization server returns a 202 (Accepted) response with a <code>registration_code</code> and a <code>verification_uri_complete</code>. The client renders the <code>verification_uri_complete</code> as a QR code and displays the <code>verification_code</code> alongside it.<a href="#appendix-A.3-2.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.3-2.3">
+            <p id="appendix-A.3-2.3.1">The approving party opens the <code>verification_uri_complete</code> in the operator's mobile application, which handles the URI directly. The application verifies the approving party against their existing account, attests its own integrity to the authorization server, and requires a biometric confirmation.<a href="#appendix-A.3-2.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.3-2.4">
+            <p id="appendix-A.3-2.4.1">The application displays the client name and the metadata to be registered together with the <code>verification_code</code>, which the approving party checks against the code shown by the client, and the approving party approves.<a href="#appendix-A.3-2.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li id="appendix-A.3-2.5">
+            <p id="appendix-A.3-2.5.1">The client's next poll returns <code>client_id</code> and <code>client_secret</code>.<a href="#appendix-A.3-2.5.1" class="pilcrow">¶</a></p>
+</li>
+        </ol>
+</section>
+</div>
+</section>
+</div>
+<div id="acknowledgments">
+<section id="appendix-B">
+      <h2 id="name-acknowledgments">
+<a href="#name-acknowledgments" class="section-name selfRef">Acknowledgments</a>
+      </h2>
+<p id="appendix-B-1">This document draws structural inspiration and significant protocol mechanics from the OAuth 2.0 Device Authorization Grant (<span>[<a href="#RFC8628" class="cite xref">RFC8628</a>]</span>) by William Denniss, John Bradley, Michael B. Jones, and Hannes Tschofenig. The polling pattern and verification code/URI presentation in this specification are direct adaptations of that work.<a href="#appendix-B-1" class="pilcrow">¶</a></p>
+<p id="appendix-B-2">The approach of deferring completion at an existing endpoint, rather than defining a new endpoint, follows the deferred token response described in <span>[<a href="#I-D.gerber-oauth-deferred-token-response" class="cite xref">I-D.gerber-oauth-deferred-token-response</a>]</span>.<a href="#appendix-B-2" class="pilcrow">¶</a></p>
+<p id="appendix-B-3">This document extends the OAuth 2.0 Dynamic Client Registration Protocol (<span>[<a href="#RFC7591" class="cite xref">RFC7591</a>]</span>) by Justin Richer (Editor), Michael B. Jones, John Bradley, Maciej Machulak, and Phil Hunt, and is intended to interoperate with the OAuth 2.0 Dynamic Client Registration Management Protocol (<span>[<a href="#RFC7592" class="cite xref">RFC7592</a>]</span>) by Justin Richer (Editor), Michael B. Jones, John Bradley, and Maciej Machulak.<a href="#appendix-B-3" class="pilcrow">¶</a></p>
+<p id="appendix-B-4">The author thanks Jeff Lombardo and Ashay Raut for their review and feedback.<a href="#appendix-B-4" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="authors-addresses">
+<section id="appendix-C">
+      <h2 id="name-authors-address">
+<a href="#name-authors-address" class="section-name selfRef">Author's Address</a>
+      </h2>
+<address class="vcard">
+        <div dir="auto" class="left"><span class="fn nameRole">Philippe Dellaert</span></div>
+<div dir="auto" class="left"><span class="org">Amazon</span></div>
+<div class="email">
+<span>Email:</span>
+<a href="mailto:pdellaer@amazon.com" class="email">pdellaer@amazon.com</a>
+</div>
+</address>
+</section>
+</div>
+<script>const toc = document.getElementById("toc");
+toc.querySelector("h2").addEventListener("click", e => {
+  toc.classList.toggle("active");
+});
+toc.querySelector("nav").addEventListener("click", e => {
+  toc.classList.remove("active");
+});
+</script>
+</body>
+</html>

@@ -7,15 +7,15 @@ submissiontype: IETF
 number:
 date:
 v: 3
-area: 'Security'
-workgroup: 'Web Authorization Protocol'
+area: "Security"
+workgroup: "Web Authorization Protocol"
 venue:
-  group: 'Web Authorization Protocol'
-  type: 'Working Group'
-  mail: 'oauth@ietf.org'
-  arch: 'https://mailarchive.ietf.org/arch/browse/oauth/'
-  github: 'pdellaert/draft-dellaert-oauth-approval-based-dcr'
-  latest: 'https://pdellaert.github.io/draft-dellaert-oauth-approval-based-dcr/draft-dellaert-oauth-approval-based-dcr.html'
+  group: "Web Authorization Protocol"
+  type: "Working Group"
+  mail: "oauth@ietf.org"
+  arch: "https://mailarchive.ietf.org/arch/browse/oauth/"
+  github: "pdellaert/draft-dellaert-oauth-approval-based-dcr"
+  latest: "https://pdellaert.github.io/draft-dellaert-oauth-approval-based-dcr/draft-dellaert-oauth-approval-based-dcr.html"
 keyword:
   - OAuth
   - Dynamic Client Registration
